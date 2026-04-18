@@ -1007,21 +1007,26 @@ class PetfeederCard extends HTMLElement {
 
     // --- Tab Content Area (below header) ---
     const tabContentArea = document.createElement('div');
-    tabContentArea.className = 'tab-content-area' + (this._activeTab ? ' active' : '');
+    tabContentArea.className = 'tab-content-area';
+
+    // Disable animations if configured
+    if (this._config.disable_animations) {
+      tabContentArea.classList.add('no-animate');
+    }
 
     // Close button (will be added at the end, after content)
     const closeBtn = document.createElement('button');
     closeBtn.className = 'tab-content-close-btn';
     closeBtn.innerHTML = '<ha-icon icon="mdi:chevron-up"></ha-icon>';
     closeBtn.addEventListener('click', () => {
-      this._activeTab = null;
-      this.render();
+      // Animate out, then remove
+      tabContentArea.classList.remove('active');
+      const duration = this._config.disable_animations ? 0 : 400;
+      setTimeout(() => {
+        this._activeTab = null;
+        this.render();
+      }, duration);
     });
-
-    // Disable animations if configured
-    if (this._config.disable_animations) {
-      tabContentArea.classList.add('no-animate');
-    }
 
     // Schedules tab content
     const schedTab = document.createElement('div');
@@ -1053,6 +1058,15 @@ class PetfeederCard extends HTMLElement {
     wrap.appendChild(tabContentArea);
 
     this._shadow.appendChild(wrap);
+
+    // Trigger open animation after element is in the DOM
+    if (this._activeTab) {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          tabContentArea.classList.add('active');
+        });
+      });
+    }
   }
 
   _hexToRgba(hex, alpha) {
