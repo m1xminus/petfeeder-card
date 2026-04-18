@@ -50,7 +50,7 @@ class PetfeederCard extends HTMLElement {
 
   set hass(hass) {
     this._hass = hass;
-    this.render();
+    if (!this._popupOpen) this.render();
   }
 
   // --- Schedule data helpers ---
@@ -261,6 +261,7 @@ class PetfeederCard extends HTMLElement {
     schedules.forEach((sched, idx) => {
       const item = document.createElement('div');
       item.className = 'schedule-item' + (sched.enabled ? '' : ' disabled');
+      item.style.cursor = 'pointer';
 
       const timeline = document.createElement('div');
       timeline.className = 'timeline-marker';
@@ -272,11 +273,6 @@ class PetfeederCard extends HTMLElement {
         timeline.appendChild(line);
       }
       timeline.appendChild(dot);
-
-      // Middle section: time + doses (clickable)
-      const middle = document.createElement('div');
-      middle.style.cssText = 'flex:1;cursor:pointer';
-      middle.addEventListener('click', () => this._openSchedulePopup(sched));
 
       const timeDiv = document.createElement('div');
       timeDiv.className = 'schedule-time';
@@ -294,57 +290,16 @@ class PetfeederCard extends HTMLElement {
         dosesDiv.textContent = `${sched.doses} Portions (Approx. ${sched.grams}g)`;
       }
 
-      middle.appendChild(timeDiv);
-      middle.appendChild(dosesDiv);
-
-      // Right section: up/down buttons
-      const controls = document.createElement('div');
-      controls.style.cssText = 'display:flex;gap:4px;flex-shrink:0';
-
-      if (idx > 0) {
-        const upBtn = document.createElement('button');
-        upBtn.textContent = '↑';
-        upBtn.style.cssText = 'width:28px;height:28px;padding:0;border:1px solid var(--divider-color);border-radius:4px;background:var(--ha-card-background);cursor:pointer;font-size:16px';
-        upBtn.addEventListener('click', e => {
-          e.stopPropagation();
-          this._moveSchedule(sched.index, -1);
-        });
-        controls.appendChild(upBtn);
-      }
-
-      if (idx < schedules.length - 1) {
-        const downBtn = document.createElement('button');
-        downBtn.textContent = '↓';
-        downBtn.style.cssText = 'width:28px;height:28px;padding:0;border:1px solid var(--divider-color);border-radius:4px;background:var(--ha-card-background);cursor:pointer;font-size:16px';
-        downBtn.addEventListener('click', e => {
-          e.stopPropagation();
-          this._moveSchedule(sched.index, 1);
-        });
-        controls.appendChild(downBtn);
-      }
-
       item.appendChild(timeline);
-      item.appendChild(middle);
-      item.appendChild(controls);
+      item.appendChild(timeDiv);
+      item.appendChild(dosesDiv);
+
+      item.addEventListener('click', () => this._openSchedulePopup(sched));
 
       container.appendChild(item);
     });
 
     return container;
-  }
-
-  // --- Schedule reordering ---
-
-  _moveSchedule(index, direction) {
-    const schedules = this._config.schedules || [];
-    const newIdx = index + direction;
-    if (newIdx < 0 || newIdx >= schedules.length) return;
-    [schedules[index], schedules[newIdx]] = [schedules[newIdx], schedules[index]];
-    this.dispatchEvent(new CustomEvent('config-changed', {
-      detail: { config: JSON.parse(JSON.stringify(this._config)) },
-      bubbles: true,
-      composed: true
-    }));
   }
 
   // --- Edit Popup ---
@@ -355,10 +310,18 @@ class PetfeederCard extends HTMLElement {
     const existing = this._shadow.querySelector('.popup-overlay');
     if (existing) existing.remove();
 
+    this._popupOpen = true;
+
+    const closePopup = () => {
+      overlay.remove();
+      this._popupOpen = false;
+      this.render();
+    };
+
     const overlay = document.createElement('div');
     overlay.className = 'popup-overlay';
     overlay.addEventListener('click', e => {
-      if (e.target === overlay) overlay.remove();
+      if (e.target === overlay) closePopup();
     });
 
     const popup = document.createElement('div');
@@ -434,7 +397,7 @@ class PetfeederCard extends HTMLElement {
     closeBtn.className = 'popup-close';
     closeBtn.textContent = '\u2715';
     closeBtn.style.cssText = 'position:absolute;top:12px;right:12px;width:28px;height:28px;border-radius:50%;border:none;background:none;cursor:pointer;color:var(--secondary-text-color,#888);font-size:16px;padding:0';
-    closeBtn.addEventListener('click', () => overlay.remove());
+    closeBtn.addEventListener('click', () => closePopup());
     popup.appendChild(closeBtn);
 
     overlay.appendChild(popup);
@@ -977,6 +940,42 @@ class PetfeederCardEditor extends HTMLElement {
             this._render();
           });
           tabContent.appendChild(removeBtn);
+
+          // Reorder buttons
+          const reorderRow = document.createElement('div');
+          reorderRow.style.cssText = 'display:flex;gap:8px;margin-top:8px';
+
+          if (this._selectedScheduleIdx > 0) {
+            const upBtn = document.createElement('button');
+            upBtn.className = 'pf-btn pf-btn-sm';
+            upBtn.style.cssText = 'flex:1;background:var(--secondary-background-color,#f5f5f5);color:var(--primary-text-color,#333);border:1px solid var(--divider-color,#e0e0e0)';
+            upBtn.textContent = '↑ Move Up';
+            upBtn.addEventListener('click', () => {
+              const i = this._selectedScheduleIdx;
+              [this._config.schedules[i], this._config.schedules[i - 1]] = [this._config.schedules[i - 1], this._config.schedules[i]];
+              this._selectedScheduleIdx = i - 1;
+              this._dispatch();
+              this._render();
+            });
+            reorderRow.appendChild(upBtn);
+          }
+
+          if (this._selectedScheduleIdx < this._config.schedules.length - 1) {
+            const downBtn = document.createElement('button');
+            downBtn.className = 'pf-btn pf-btn-sm';
+            downBtn.style.cssText = 'flex:1;background:var(--secondary-background-color,#f5f5f5);color:var(--primary-text-color,#333);border:1px solid var(--divider-color,#e0e0e0)';
+            downBtn.textContent = '↓ Move Down';
+            downBtn.addEventListener('click', () => {
+              const i = this._selectedScheduleIdx;
+              [this._config.schedules[i], this._config.schedules[i + 1]] = [this._config.schedules[i + 1], this._config.schedules[i]];
+              this._selectedScheduleIdx = i + 1;
+              this._dispatch();
+              this._render();
+            });
+            reorderRow.appendChild(downBtn);
+          }
+
+          if (reorderRow.children.length > 0) tabContent.appendChild(reorderRow);
 
           body.appendChild(tabContent);
         }
