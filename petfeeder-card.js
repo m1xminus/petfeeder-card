@@ -4,15 +4,36 @@ class PetfeederCard extends HTMLElement {
     this._config = {};
     this._popupOpen = false;
     this._shadow = this.attachShadow({ mode: 'open' });
-    this._hasRendered = false;
     this._domBuilt = false;
+    this._renderTimer = null;
+    this._resizeObserver = null;
+    this._wasVisible = false;
   }
 
   connectedCallback() {
-    // Re-render when element is added to the DOM (e.g., popup opens)
-    if (this._hass && this._config) {
-      this._domBuilt = false;
-      requestAnimationFrame(() => this.render());
+    // Force rebuild when re-attached (e.g., popup opens)
+    this._domBuilt = false;
+    this._wasVisible = false;
+    if (this._hass) {
+      this.render();
+    }
+
+    // Watch for visibility changes (Bubble Card popups use display:none)
+    // When the card transitions from hidden to visible, force a re-render
+    if (!this._resizeObserver) {
+      this._resizeObserver = new ResizeObserver((entries) => {
+        for (const entry of entries) {
+          const isVisible = entry.contentRect.width > 0 && entry.contentRect.height > 0;
+          if (isVisible && !this._wasVisible) {
+            // Card just became visible (popup opened)
+            this._wasVisible = true;
+            this._domBuilt = false;
+            this.render();
+          }
+          this._wasVisible = isVisible;
+        }
+      });
+      this._resizeObserver.observe(this);
     }
   }
 
@@ -21,6 +42,12 @@ class PetfeederCard extends HTMLElement {
       clearTimeout(this._renderTimer);
       this._renderTimer = null;
     }
+    if (this._resizeObserver) {
+      this._resizeObserver.disconnect();
+      this._resizeObserver = null;
+    }
+    this._domBuilt = false;
+    this._wasVisible = false;
   }
 
   setConfig(config) {
@@ -69,7 +96,7 @@ class PetfeederCard extends HTMLElement {
     }, config || {});
     this._activeTab = null;
     
-    // Config changed - force full DOM rebuild
+    // Config changed - force full DOM rebuild on next render
     this._domBuilt = false;
     if (this._hass) {
       this.render();
@@ -249,18 +276,19 @@ class PetfeederCard extends HTMLElement {
     this._hass = hass;
     if (this._popupOpen) return;
 
-    // If DOM hasn't been built yet, do a full render
+    // If DOM hasn't been built yet, do a full render (first load / reconnect)
     if (!this._domBuilt) {
       this.render();
       return;
     }
 
-    // DOM already built - only update dynamic values in-place (no full rebuild)
+    // DOM already built - only update dynamic values in-place
+    // Throttle to avoid excessive updates on Android Companion
     if (this._renderTimer) return;
     this._renderTimer = setTimeout(() => {
       this._renderTimer = null;
       this._updateDynamic();
-    }, 200);
+    }, 500);
   }
 
   // Update only the dynamic parts of the card without rebuilding the DOM
@@ -735,11 +763,11 @@ class PetfeederCard extends HTMLElement {
     const schedules = this._getScheduleData().filter(s => s.enabled);
     const accentColor = this._config.accent_color || '#4db6ac';
     const errorColor = '#ff6b6b';
+    const trackColor = '#555';
 
     // Get current time from Home Assistant
     const now = new Date();
     if (this._hass && this._hass.states['sensor.time']) {
-      // Use HA time if available
       const timeStr = this._hass.states['sensor.time']?.state;
       if (timeStr && typeof timeStr === 'string') {
         const [h, m] = timeStr.split(':').map(Number);
@@ -758,27 +786,8 @@ class PetfeederCard extends HTMLElement {
     const strokeWidth = 12;
     const circumference = 2 * Math.PI * radius;
 
-    const container = document.createElement('div');
-    container.className = 'dial-container';
-
-    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    svg.setAttribute('viewBox', `0 0 ${size} ${size}`);
-    svg.setAttribute('width', `${size}`);
-    svg.setAttribute('height', `${size}`);
-    svg.style.display = 'block';
-    svg.style.maxWidth = '100%';
-    svg.style.maxHeight = '100%';
-
-    // Background track
-    const bgCircle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-    bgCircle.setAttribute('cx', cx);
-    bgCircle.setAttribute('cy', cy);
-    bgCircle.setAttribute('r', radius);
-    bgCircle.setAttribute('fill', 'none');
-    bgCircle.setAttribute('stroke', 'var(--divider-color, #e0e0e0)');
-    bgCircle.setAttribute('stroke-width', '14');
-    bgCircle.setAttribute('opacity', '0.25');
-    svg.appendChild(bgCircle);
+    // Build SVG as HTML string for Android WebView compatibility
+    let svgContent = `<circle cx="${cx}" cy="${cy}" r="${radius}" fill="none" stroke="${trackColor}" stroke-width="14" opacity="0.25"/>`;
 
     if (schedules.length > 0) {
       const gap = 8;
@@ -792,18 +801,7 @@ class PetfeederCard extends HTMLElement {
         const offset = -((currentAngle + 90) / 360) * circumference;
 
         // Background segment
-        const bgSeg = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-        bgSeg.setAttribute('cx', cx);
-        bgSeg.setAttribute('cy', cy);
-        bgSeg.setAttribute('r', radius);
-        bgSeg.setAttribute('fill', 'none');
-        bgSeg.setAttribute('stroke', 'var(--divider-color, #ddd)');
-        bgSeg.setAttribute('stroke-width', strokeWidth);
-        bgSeg.setAttribute('stroke-dasharray', `${segmentRad} ${circumference}`);
-        bgSeg.setAttribute('stroke-dashoffset', `${offset}`);
-        bgSeg.setAttribute('stroke-linecap', 'round');
-        bgSeg.setAttribute('opacity', '0.15');
-        svg.appendChild(bgSeg);
+        svgContent += `<circle cx="${cx}" cy="${cy}" r="${radius}" fill="none" stroke="${trackColor}" stroke-width="${strokeWidth}" stroke-dasharray="${segmentRad} ${circumference}" stroke-dashoffset="${offset}" stroke-linecap="round" opacity="0.15"/>`;
 
         // Determine schedule status
         const scheduleTime = new Date(now);
@@ -812,18 +810,8 @@ class PetfeederCard extends HTMLElement {
 
         // Only fill if schedule has passed
         if (isSchedulePassed) {
-          const fillSeg = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-          fillSeg.setAttribute('cx', cx);
-          fillSeg.setAttribute('cy', cy);
-          fillSeg.setAttribute('r', radius);
-          fillSeg.setAttribute('fill', 'none');
-          // Red if error, green if success
-          fillSeg.setAttribute('stroke', hasError ? errorColor : accentColor);
-          fillSeg.setAttribute('stroke-width', strokeWidth);
-          fillSeg.setAttribute('stroke-dasharray', `${segmentRad} ${circumference}`);
-          fillSeg.setAttribute('stroke-dashoffset', `${offset}`);
-          fillSeg.setAttribute('stroke-linecap', 'round');
-          svg.appendChild(fillSeg);
+          const strokeColor = hasError ? errorColor : accentColor;
+          svgContent += `<circle cx="${cx}" cy="${cy}" r="${radius}" fill="none" stroke="${strokeColor}" stroke-width="${strokeWidth}" stroke-dasharray="${segmentRad} ${circumference}" stroke-dashoffset="${offset}" stroke-linecap="round"/>`;
         }
 
         // Add visible separator line at the end of each segment
@@ -834,53 +822,29 @@ class PetfeederCard extends HTMLElement {
           const y1 = cy + (radius - strokeWidth / 2) * Math.sin(angleRad);
           const x2 = cx + (radius + strokeWidth / 2) * Math.cos(angleRad);
           const y2 = cy + (radius + strokeWidth / 2) * Math.sin(angleRad);
-
-          const dividerLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-          dividerLine.setAttribute('x1', x1);
-          dividerLine.setAttribute('y1', y1);
-          dividerLine.setAttribute('x2', x2);
-          dividerLine.setAttribute('y2', y2);
-          dividerLine.setAttribute('stroke', 'var(--divider-color, #ddd)');
-          dividerLine.setAttribute('stroke-width', '1.5');
-          dividerLine.setAttribute('opacity', '0.4');
-          svg.appendChild(dividerLine);
+          svgContent += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${trackColor}" stroke-width="1.5" opacity="0.4"/>`;
         }
 
         currentAngle += segmentDeg + gap;
       });
     } else {
       // No schedules: show simple progress ring
-      const todayGrams = this._getTodayGrams();
       const ratio = Math.min(todayGrams / 100, 1);
       const filledRad = ratio * circumference;
-      const fillCircle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-      fillCircle.setAttribute('cx', cx);
-      fillCircle.setAttribute('cy', cy);
-      fillCircle.setAttribute('r', radius);
-      fillCircle.setAttribute('fill', 'none');
-      fillCircle.setAttribute('stroke', accentColor);
-      fillCircle.setAttribute('stroke-width', strokeWidth);
-      fillCircle.setAttribute('stroke-dasharray', `${filledRad} ${circumference}`);
-      fillCircle.setAttribute('stroke-dashoffset', `${circumference * 0.25}`);
-      fillCircle.setAttribute('stroke-linecap', 'round');
-      svg.appendChild(fillCircle);
+      svgContent += `<circle cx="${cx}" cy="${cy}" r="${radius}" fill="none" stroke="${accentColor}" stroke-width="${strokeWidth}" stroke-dasharray="${filledRad} ${circumference}" stroke-dashoffset="${circumference * 0.25}" stroke-linecap="round"/>`;
     }
 
-    container.appendChild(svg);
-
-    // Center text
-    const centerText = document.createElement('div');
-    centerText.className = 'dial-center';
-    const dosesNum = document.createElement('div');
-    dosesNum.className = 'dial-grams';
     const todayDoses = this._getTodayDoses();
-    dosesNum.textContent = todayDoses;
-    const dosesLabel = document.createElement('div');
-    dosesLabel.className = 'dial-label';
-    dosesLabel.textContent = `${this._t('portions')} (${Math.round(todayGrams)}g)`;
-    centerText.appendChild(dosesNum);
-    centerText.appendChild(dosesLabel);
-    container.appendChild(centerText);
+
+    const container = document.createElement('div');
+    container.className = 'dial-container';
+    container.innerHTML = `
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${size} ${size}" width="${size}" height="${size}" style="display:block;max-width:100%;max-height:100%">${svgContent}</svg>
+      <div class="dial-center">
+        <div class="dial-grams">${todayDoses}</div>
+        <div class="dial-label">${this._t('portions')} (${Math.round(todayGrams)}g)</div>
+      </div>
+    `;
 
     return container;
   }
@@ -1383,10 +1347,9 @@ class PetfeederCard extends HTMLElement {
   // --- Main Render ---
 
   render() {
-    if (!this._shadow) return;
-    if (!this._hass) return;
+    if (!this._shadow || !this._hass) return;
 
-    this._hasRendered = true;
+    // Mark DOM as built to prevent re-renders from set hass
     this._domBuilt = true;
 
     // Use compact rendering if enabled
@@ -1410,10 +1373,10 @@ class PetfeederCard extends HTMLElement {
       .pet-name{font-size:16px;font-weight:500;color:var(--primary-text-color,#333);display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:4px}
       .pet-name img{width:28px;height:28px;border-radius:50%;object-fit:cover}
       .sub-label{font-size:12px;color:var(--secondary-text-color,#888);margin-bottom:16px}
-      .header-main{display:flex;align-items:stretch;justify-content:center;gap:0;padding:0 8px}
+      .header-main{display:flex;align-items:center;justify-content:center;gap:0;padding:0 8px}
       .header-left{flex:0 0 100px;display:flex;flex-direction:column;gap:8px;align-items:center;padding:8px 4px}
       .header-center{flex:1;display:flex;flex-direction:column;align-items:center;padding:0 12px}
-      .header-right{flex:0 0 120px;display:flex;flex-direction:column;gap:3px;align-items:stretch;padding:4px 4px;margin:0;justify-content:space-evenly}
+      .header-right{flex:0 0 auto;width:120px;display:flex;flex-direction:column;gap:3px;align-items:stretch;padding:8px 4px}
       .left-status-panel{display:flex;flex-direction:column;gap:8px;width:100%}
       .left-status-item{display:flex;flex-direction:column;align-items:center;gap:2px;padding:6px 8px;background:transparent;border-radius:6px;border:none}
       .left-status-icon{font-size:28px;color:#888;display:flex;align-items:center;justify-content:center}
@@ -1424,9 +1387,9 @@ class PetfeederCard extends HTMLElement {
       .dial-grams{font-size:48px;font-weight:300;color:var(--primary-text-color,#333);line-height:1}
       .dial-label{font-size:12px;color:var(--secondary-text-color,#888);margin-top:4px}
       .next-schedule-row{margin-top:8px;margin-bottom:12px;font-size:13px;color:var(--secondary-text-color,#888);text-align:center}
-      .tab-btn{width:100%;flex:1;padding:4px 6px;border:none;background:var(--secondary-background-color,#f5f5f5);color:var(--secondary-text-color,#888);font-size:10px;font-weight:500;cursor:pointer;transition:all 0.2s;border-radius:6px;text-align:center;white-space:nowrap;border:1px solid var(--divider-color,#e0e0e0);box-sizing:border-box;line-height:1.2;display:flex;align-items:center;justify-content:center}
+      .tab-btn{width:100%;padding:6px 6px;border:1px solid var(--divider-color,#e0e0e0);background:var(--secondary-background-color,#f5f5f5);color:var(--secondary-text-color,#888);font-size:10px;font-weight:500;cursor:pointer;transition:color 0.2s,border-color 0.2s,background 0.2s;border-radius:6px;text-align:center;white-space:nowrap;box-sizing:border-box;line-height:1.3}
       .tab-btn:hover{background:var(--ha-card-background,#fff);border-color:${accentColor}}
-      .tab-btn.active{color:${accentColor};background:var(--ha-card-background,#fff);border-color:${accentColor};font-weight:600}
+      .tab-btn.active{color:${accentColor};background:var(--ha-card-background,#fff);border-color:${accentColor}}
       .tab-content-area{background:${contentBg};padding:16px 16px 48px;border-top:1px solid var(--divider-color,#e0e0e0);min-height:60px;position:relative;max-height:0;overflow:hidden;opacity:0;padding-top:0;padding-bottom:0;border-top:none;transition:max-height 0.4s ease-out,opacity 0.3s ease-out,padding 0.4s ease-out,border-top 0s 0.4s}
       .tab-content-area.active{max-height:800px;opacity:1;padding:16px 16px 48px;border-top:1px solid var(--divider-color,#e0e0e0);transition:max-height 0.4s ease-out,opacity 0.3s ease-out,padding 0.4s ease-out,border-top 0s}
       .tab-content-area.no-animate{transition:none !important}
@@ -1492,7 +1455,7 @@ class PetfeederCard extends HTMLElement {
         .header-main{gap:0;padding:0 4px}
         .header-left{flex:0 0 100px;padding:4px 2px;gap:4px}
         .header-center{padding:0;flex:1}
-        .header-right{flex:0 0 100px;padding:4px 2px;gap:2px}
+        .header-right{width:100px;padding:4px 2px;gap:2px}
         .dial-container{width:140px;height:140px;margin:0 8px}
         .dial-grams{font-size:36px}
         .dial-label{font-size:10px;margin-top:2px}
@@ -1510,7 +1473,7 @@ class PetfeederCard extends HTMLElement {
         .header-main{gap:0;padding:0 2px}
         .header-left{flex:0 0 80px;padding:3px 1px;gap:3px}
         .header-center{padding:0;flex:1}
-        .header-right{flex:0 0 90px;padding:2px 1px;gap:1px}
+        .header-right{width:90px;padding:2px 1px;gap:1px}
         .dial-container{width:120px;height:120px;margin:0 6px}
         .dial-grams{font-size:32px}
         .dial-label{font-size:9px;margin-top:1px}
