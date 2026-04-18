@@ -43,12 +43,52 @@ class PetfeederCard extends HTMLElement {
         settings: []
       }
     }, config || {});
-    this._activeTab = this._config.tabs_config?.active_tab || 'schedules';
+    this._activeTab = null;
     this.render();
   }
 
   getCardSize() {
     return this._config.compact ? 3 : 6;
+  }
+
+  // --- Translation system ---
+  static get TRANSLATIONS() {
+    return {
+      en: {
+        portions_grams_today: 'Portions & Grams dispensed today',
+        portions: 'Portions',
+        next: 'Next',
+        portions_label: 'portions',
+        no_upcoming: 'No upcoming schedules',
+        no_schedules: 'No schedules configured',
+        no_settings: 'No settings configured',
+        no_stats: 'No stats configured',
+        quick_feeds: 'Quick Feeds',
+        custom_feed: 'Custom Feed',
+        send: 'Send',
+        disable_animations: 'Disable Animations',
+      },
+      pt: {
+        portions_grams_today: 'Porções & Gramas dispensadas hoje',
+        portions: 'Porções',
+        next: 'Próximo',
+        portions_label: 'porções',
+        no_upcoming: 'Sem horários próximos',
+        no_schedules: 'Nenhum horário configurado',
+        no_settings: 'Nenhuma configuração',
+        no_stats: 'Nenhuma estatística configurada',
+        quick_feeds: 'Alimentações Rápidas',
+        custom_feed: 'Alimentação Personalizada',
+        send: 'Enviar',
+        disable_animations: 'Desativar Animações',
+      }
+    };
+  }
+
+  _t(key) {
+    const lang = this._config.language || 'en';
+    const translations = PetfeederCard.TRANSLATIONS[lang] || PetfeederCard.TRANSLATIONS['en'];
+    return translations[key] || PetfeederCard.TRANSLATIONS['en'][key] || key;
   }
 
   static getConfigElement() {
@@ -286,7 +326,7 @@ class PetfeederCard extends HTMLElement {
     dosesNum.textContent = todayDoses;
     const dosesLabel = document.createElement('div');
     dosesLabel.className = 'dial-label';
-    dosesLabel.textContent = `Portions (${Math.round(todayGrams)}g)`;
+    dosesLabel.textContent = `${this._t('portions')} (${Math.round(todayGrams)}g)`;
     centerText.appendChild(dosesNum);
     centerText.appendChild(dosesLabel);
     container.appendChild(centerText);
@@ -304,7 +344,7 @@ class PetfeederCard extends HTMLElement {
     if (schedules.length === 0) {
       const empty = document.createElement('div');
       empty.style.cssText = 'text-align:center;color:#999;font-size:13px;padding:16px';
-      empty.textContent = 'No schedules configured';
+      empty.textContent = this._t('no_schedules');
       container.appendChild(empty);
       return container;
     }
@@ -590,7 +630,7 @@ class PetfeederCard extends HTMLElement {
 
     const quickTitle = document.createElement('div');
     quickTitle.className = 'tab-section-title';
-    quickTitle.textContent = 'Quick Feed';
+    quickTitle.textContent = this._t('quick_feeds');
     quickSection.appendChild(quickTitle);
 
     const buttonsContainer = document.createElement('div');
@@ -614,7 +654,7 @@ class PetfeederCard extends HTMLElement {
     const customSection = document.createElement('div');
     const customTitle = document.createElement('div');
     customTitle.className = 'tab-section-title';
-    customTitle.textContent = 'Custom Feed';
+    customTitle.textContent = this._t('custom_feed');
     customSection.appendChild(customTitle);
 
     const customRow = document.createElement('div');
@@ -630,7 +670,7 @@ class PetfeederCard extends HTMLElement {
 
     const customBtn = document.createElement('button');
     customBtn.className = 'custom-feed-btn';
-    customBtn.textContent = 'Feed';
+    customBtn.textContent = this._t('send');
     customBtn.addEventListener('click', () => {
       const doses = parseInt(dosenInput.value, 10) || 1;
       this._feedNow(doses);
@@ -671,7 +711,7 @@ class PetfeederCard extends HTMLElement {
     if (stats.length === 0) {
       const empty = document.createElement('div');
       empty.style.cssText = 'text-align:center;color:#999;font-size:13px;padding:16px';
-      empty.textContent = 'No stats configured';
+      empty.textContent = this._t('no_stats');
       container.appendChild(empty);
       return container;
     }
@@ -716,7 +756,7 @@ class PetfeederCard extends HTMLElement {
     if (settings.length === 0) {
       const empty = document.createElement('div');
       empty.style.cssText = 'text-align:center;color:#999;font-size:13px;padding:16px';
-      empty.textContent = 'No settings configured';
+      empty.textContent = this._t('no_settings');
       container.appendChild(empty);
       return container;
     }
@@ -820,11 +860,10 @@ class PetfeederCard extends HTMLElement {
       .tab-btn{width:100%;padding:10px 8px;border:none;background:var(--secondary-background-color,#f5f5f5);color:var(--secondary-text-color,#888);font-size:11px;font-weight:500;cursor:pointer;transition:all 0.2s;border-radius:6px;text-align:center;white-space:nowrap;border:1px solid var(--divider-color,#e0e0e0)}
       .tab-btn:hover{background:var(--ha-card-background,#fff);border-color:${accentColor}}
       .tab-btn.active{color:${accentColor};background:var(--ha-card-background,#fff);border-color:${accentColor};font-weight:600}
-      .tab-content-area{background:${contentBg};padding:16px;border-top:1px solid var(--divider-color,#e0e0e0);min-height:60px;animation:slideDown 0.4s ease-out;position:relative;visibility:hidden;opacity:0;transition:visibility 0s 0.4s,opacity 0.4s ease-out}
-      .tab-content-area.active{visibility:visible;opacity:1;transition:visibility 0s,opacity 0.4s ease-out}
-      @keyframes slideDown{from{transform:translateY(-20px)}to{transform:translateY(0)}}
-      @keyframes slideUp{from{transform:translateY(20px)}to{transform:translateY(0)}}
-      .tab-content-close-btn{position:absolute;bottom:12px;left:50%;transform:translateX(-50%);width:32px;height:32px;border:none;background:transparent;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--secondary-text-color,#888);border-radius:6px;transition:all 0.2s}
+      .tab-content-area{background:${contentBg};padding:16px 16px 48px;border-top:1px solid var(--divider-color,#e0e0e0);min-height:60px;position:relative;max-height:0;overflow:hidden;opacity:0;padding-top:0;padding-bottom:0;border-top:none;transition:max-height 0.4s ease-out,opacity 0.3s ease-out,padding 0.4s ease-out,border-top 0s 0.4s}
+      .tab-content-area.active{max-height:800px;opacity:1;padding:16px 16px 48px;border-top:1px solid var(--divider-color,#e0e0e0);transition:max-height 0.4s ease-out,opacity 0.3s ease-out,padding 0.4s ease-out,border-top 0s}
+      .tab-content-area.no-animate{transition:none !important}
+      .tab-content-close-btn{position:absolute;bottom:8px;left:50%;transform:translateX(-50%);width:32px;height:32px;border:none;background:transparent;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--secondary-text-color,#888);border-radius:6px;transition:all 0.2s}
       .tab-content-close-btn:hover{background:var(--divider-color,#e0e0e0);color:var(--primary-text-color,#333)}
       .tab-content-close-btn ha-icon{font-size:20px}
       .schedule-section{display:none}
@@ -906,7 +945,7 @@ class PetfeederCard extends HTMLElement {
     // Subtitle
     const subLabel = document.createElement('div');
     subLabel.className = 'sub-label';
-    subLabel.textContent = 'Portions & Grams dispensed today';
+    subLabel.textContent = this._t('portions_grams_today');
     header.appendChild(subLabel);
 
     // Main row: [Status] | [Dial + Next] | [Tab Buttons]
@@ -929,9 +968,9 @@ class PetfeederCard extends HTMLElement {
     const nextSchedule = this._computeNextSchedule();
     if (nextSchedule) {
       const s = nextSchedule.schedule;
-      nextRow.textContent = `Next: ${String(s.hour).padStart(2, '0')}:${String(s.minute).padStart(2, '0')} (${s.doses} portions)`;
+      nextRow.textContent = `${this._t('next')}: ${String(s.hour).padStart(2, '0')}:${String(s.minute).padStart(2, '0')} (${s.doses} ${this._t('portions_label')})`;
     } else {
-      nextRow.textContent = 'No upcoming schedules';
+      nextRow.textContent = this._t('no_upcoming');
     }
     headerCenter.appendChild(nextRow);
     headerMain.appendChild(headerCenter);
@@ -952,7 +991,11 @@ class PetfeederCard extends HTMLElement {
       tabBtn.className = 'tab-btn' + (this._activeTab === tab.key ? ' active' : '');
       tabBtn.textContent = tab.label;
       tabBtn.addEventListener('click', () => {
-        this._activeTab = tab.key;
+        if (this._activeTab === tab.key) {
+          this._activeTab = null;
+        } else {
+          this._activeTab = tab.key;
+        }
         this.render();
       });
       headerRight.appendChild(tabBtn);
@@ -971,13 +1014,14 @@ class PetfeederCard extends HTMLElement {
     closeBtn.className = 'tab-content-close-btn';
     closeBtn.innerHTML = '<ha-icon icon="mdi:chevron-up"></ha-icon>';
     closeBtn.addEventListener('click', () => {
-      tabContentArea.style.animation = 'slideUp 0.4s ease-out forwards';
-      tabContentArea.style.opacity = '0';
-      setTimeout(() => {
-        this._activeTab = null;
-        this.render();
-      }, 400);
+      this._activeTab = null;
+      this.render();
     });
+
+    // Disable animations if configured
+    if (this._config.disable_animations) {
+      tabContentArea.classList.add('no-animate');
+    }
 
     // Schedules tab content
     const schedTab = document.createElement('div');
@@ -1053,6 +1097,12 @@ class PetfeederCardEditor extends HTMLElement {
     }));
   }
 
+  _t(key) {
+    const lang = this._config.language || 'en';
+    const translations = PetfeederCard.TRANSLATIONS[lang] || PetfeederCard.TRANSLATIONS['en'];
+    return translations[key] || PetfeederCard.TRANSLATIONS['en'][key] || key;
+  }
+
   _render() {
     this._rendered = true;
     this.innerHTML = '';
@@ -1097,6 +1147,11 @@ class PetfeederCardEditor extends HTMLElement {
       .pf-tab-content{border:1px solid var(--divider-color,#e0e0e0);border-radius:8px;padding:16px;background:var(--secondary-background-color,#fafafa)}
       select.pf-select{width:100%;padding:8px 12px;border:1px solid var(--divider-color,#e0e0e0);border-radius:4px;background:var(--card-background-color,#fff);color:var(--primary-text-color,#212121);font-size:14px;box-sizing:border-box}
       textarea.pf-textarea{width:100%;padding:8px 12px;border:1px solid var(--divider-color,#e0e0e0);border-radius:4px;background:var(--card-background-color,#fff);color:var(--primary-text-color,#212121);font-size:14px;box-sizing:border-box;resize:vertical}
+      .popup-row{display:flex;align-items:center;justify-content:space-between}
+      .toggle{width:48px;height:26px;border-radius:13px;background:#ccc;position:relative;cursor:pointer;transition:background 0.2s;flex-shrink:0}
+      .toggle.on{background:var(--primary-color,#03a9f4)}
+      .toggle-thumb{width:22px;height:22px;border-radius:50%;background:#fff;position:absolute;top:2px;left:2px;transition:transform 0.2s;box-shadow:0 1px 3px rgba(0,0,0,0.2)}
+      .toggle.on .toggle-thumb{transform:translateX(22px)}
     `;
     this.appendChild(style);
 
@@ -1505,6 +1560,50 @@ class PetfeederCardEditor extends HTMLElement {
 
     // === VISUALS SECTION ===
     editor.appendChild(this._buildSection('Visuals', false, (body) => {
+      // Language
+      const langField = document.createElement('div');
+      langField.className = 'pf-field';
+      const langLabel = document.createElement('label');
+      langLabel.className = 'pf-field-label';
+      langLabel.textContent = 'Language';
+      langField.appendChild(langLabel);
+      const langSelect = document.createElement('select');
+      langSelect.className = 'pf-select';
+      [['en', 'English'], ['pt', 'Português']].forEach(([val, label]) => {
+        const opt = document.createElement('option');
+        opt.value = val;
+        opt.textContent = label;
+        if ((this._config.language || 'en') === val) opt.selected = true;
+        langSelect.appendChild(opt);
+      });
+      langSelect.addEventListener('change', e => {
+        this._config.language = e.target.value;
+        this._dispatch();
+        this._render();
+      });
+      langField.appendChild(langSelect);
+      body.appendChild(langField);
+
+      // Disable Animations toggle
+      const animRow = document.createElement('div');
+      animRow.className = 'popup-row';
+      animRow.style.cssText = 'display:flex;align-items:center;justify-content:space-between;margin-bottom:16px';
+      const animLabel = document.createElement('label');
+      animLabel.className = 'pf-field-label';
+      animLabel.textContent = this._t('disable_animations');
+      animLabel.style.cssText = 'margin:0';
+      const animToggle = document.createElement('div');
+      animToggle.className = 'toggle' + (this._config.disable_animations ? ' on' : '');
+      animToggle.innerHTML = '<div class="toggle-thumb"></div>';
+      animToggle.addEventListener('click', () => {
+        this._config.disable_animations = !this._config.disable_animations;
+        animToggle.classList.toggle('on');
+        this._dispatch();
+      });
+      animRow.appendChild(animLabel);
+      animRow.appendChild(animToggle);
+      body.appendChild(animRow);
+
       // Header Color
       body.appendChild(this._buildColorInput('Header Background Color', this._config.header_color || '#ffffff', v => {
         this._config.header_color = v;
