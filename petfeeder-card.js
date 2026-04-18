@@ -15,6 +15,7 @@ class PetfeederCard extends HTMLElement {
       last_feed_entity: null,
       today_grams_entity: null,
       today_doses_entity: null,
+      food_delivery_error_entity: null,
       schedules: [],
       header_color: '#ffffff',
       header_opacity: 1,
@@ -62,6 +63,7 @@ class PetfeederCard extends HTMLElement {
       last_feed_entity: '',
       today_grams_entity: '',
       today_doses_entity: '',
+      food_delivery_error_entity: '',
       schedules: [],
       left_status: [],
       tabs_config: {
@@ -161,10 +163,24 @@ class PetfeederCard extends HTMLElement {
   // --- SVG Dial ---
 
   _renderDial() {
-    const todayGrams = this._getTodayGrams();
     const schedules = this._getScheduleData().filter(s => s.enabled);
-    const totalExpected = this._getTotalExpectedGrams();
     const accentColor = this._config.accent_color || '#4db6ac';
+    const errorColor = '#ff6b6b';
+
+    // Get current time from Home Assistant
+    const now = new Date();
+    if (this._hass && this._hass.states['sensor.time']) {
+      // Use HA time if available
+      const timeStr = this._hass.states['sensor.time']?.state;
+      if (timeStr && typeof timeStr === 'string') {
+        const [h, m] = timeStr.split(':').map(Number);
+        now.setHours(h, m, 0, 0);
+      }
+    }
+
+    // Get error sensor state
+    const errorSensor = this._config.food_delivery_error_entity;
+    const hasError = errorSensor && this._hass?.states[errorSensor]?.state === 'on';
 
     const size = 200;
     const cx = size / 2;
@@ -196,12 +212,11 @@ class PetfeederCard extends HTMLElement {
       const gap = 4;
       const totalGap = gap * schedules.length;
       const availableDeg = 360 - totalGap;
+      const segmentDeg = availableDeg / schedules.length;
+      const segmentRad = (segmentDeg / 360) * circumference;
       let currentAngle = -90;
-      let gramsRemaining = todayGrams;
 
       schedules.forEach((sched) => {
-        const segmentDeg = (sched.grams / totalExpected) * availableDeg;
-        const segmentRad = (segmentDeg / 360) * circumference;
         const offset = -((currentAngle + 90) / 360) * circumference;
 
         // Background segment
@@ -218,21 +233,22 @@ class PetfeederCard extends HTMLElement {
         bgSeg.setAttribute('opacity', '0.15');
         svg.appendChild(bgSeg);
 
-        // Filled portion
-        const filled = Math.min(gramsRemaining, sched.grams);
-        const filledRatio = sched.grams > 0 ? filled / sched.grams : 0;
-        gramsRemaining -= filled;
+        // Determine schedule status
+        const scheduleTime = new Date(now);
+        scheduleTime.setHours(sched.hour, sched.minute, 0, 0);
+        const isSchedulePassed = now >= scheduleTime;
 
-        if (filledRatio > 0) {
-          const filledRad = filledRatio * segmentRad;
+        // Only fill if schedule has passed
+        if (isSchedulePassed) {
           const fillSeg = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
           fillSeg.setAttribute('cx', cx);
           fillSeg.setAttribute('cy', cy);
           fillSeg.setAttribute('r', radius);
           fillSeg.setAttribute('fill', 'none');
-          fillSeg.setAttribute('stroke', accentColor);
+          // Red if error, green if success
+          fillSeg.setAttribute('stroke', hasError ? errorColor : accentColor);
           fillSeg.setAttribute('stroke-width', strokeWidth);
-          fillSeg.setAttribute('stroke-dasharray', `${filledRad} ${circumference}`);
+          fillSeg.setAttribute('stroke-dasharray', `${segmentRad} ${circumference}`);
           fillSeg.setAttribute('stroke-dashoffset', `${offset}`);
           fillSeg.setAttribute('stroke-linecap', 'round');
           svg.appendChild(fillSeg);
@@ -242,6 +258,7 @@ class PetfeederCard extends HTMLElement {
       });
     } else {
       // No schedules: show simple progress ring
+      const todayGrams = this._getTodayGrams();
       const ratio = Math.min(todayGrams / 100, 1);
       const filledRad = ratio * circumference;
       const fillCircle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
@@ -291,10 +308,24 @@ class PetfeederCard extends HTMLElement {
       return container;
     }
 
+    // Get current time
+    const now = new Date();
+    if (this._hass && this._hass.states['sensor.time']) {
+      const timeStr = this._hass.states['sensor.time']?.state;
+      if (timeStr && typeof timeStr === 'string') {
+        const [h, m] = timeStr.split(':').map(Number);
+        now.setHours(h, m, 0, 0);
+      }
+    }
+
+    // Get error sensor state
+    const errorSensor = this._config.food_delivery_error_entity;
+    const hasError = errorSensor && this._hass?.states[errorSensor]?.state === 'on';
+
     schedules.forEach((sched, idx) => {
       const item = document.createElement('div');
       item.className = 'schedule-item' + (sched.enabled ? '' : ' disabled');
-      item.style.cursor = 'pointer';
+      item.style.cssText = 'cursor:pointer;display:flex;align-items:center;gap:12px';
 
       const timeline = document.createElement('div');
       timeline.className = 'timeline-marker';
@@ -323,9 +354,24 @@ class PetfeederCard extends HTMLElement {
         dosesDiv.textContent = `${sched.doses} Portions (Approx. ${sched.grams}g)`;
       }
 
+      // Status indicator (green for success, red for error)
+      const statusDiv = document.createElement('div');
+      statusDiv.style.cssText = 'width:12px;height:12px;border-radius:50%;flex-shrink:0;margin-left:auto';
+      
+      const scheduleTime = new Date(now);
+      scheduleTime.setHours(sched.hour, sched.minute, 0, 0);
+      const isSchedulePassed = now >= scheduleTime;
+
+      if (isSchedulePassed) {
+        statusDiv.style.backgroundColor = hasError ? '#ff6b6b' : '#4db6ac';
+      } else {
+        statusDiv.style.backgroundColor = '#ccc';
+      }
+
       item.appendChild(timeline);
       item.appendChild(timeDiv);
       item.appendChild(dosesDiv);
+      item.appendChild(statusDiv);
 
       item.addEventListener('click', () => this._openSchedulePopup(sched));
 
@@ -1100,6 +1146,12 @@ class PetfeederCardEditor extends HTMLElement {
       // Today Doses Entity
       body.appendChild(this._buildHaEntityPicker('Today Doses Entity', this._config.today_doses_entity || '', v => {
         this._config.today_doses_entity = v || null;
+        this._dispatch();
+      }));
+
+      // Food Delivery Error Entity
+      body.appendChild(this._buildHaEntityPicker('Food Delivery Error Sensor', this._config.food_delivery_error_entity || '', v => {
+        this._config.food_delivery_error_entity = v || null;
         this._dispatch();
       }));
     }));
