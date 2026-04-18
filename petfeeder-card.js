@@ -8,16 +8,14 @@ class PetfeederCard extends HTMLElement {
 
   setConfig(config) {
     this._config = Object.assign({
-      title: 'Petfeeder',
+      main_title: 'My Feeder',
+      show_title: true,
       compact: false,
       image: '',
-      status: [null, null, null, null],
-      menu: [],
       last_feed_entity: null,
       today_grams_entity: null,
       today_doses_entity: null,
       schedules: [],
-      status_label: 'status:',
       header_color: '#ffffff',
       header_opacity: 1,
       content_color: '#fafafa',
@@ -25,7 +23,7 @@ class PetfeederCard extends HTMLElement {
       accent_color: '#4db6ac',
       left_status: [],
       tabs_config: {
-        show_tabs: false,
+        show_tabs: true,
         active_tab: 'schedules',
         schedules_label: 'Schedules',
         manual_feed_label: 'Manual Feed',
@@ -58,15 +56,13 @@ class PetfeederCard extends HTMLElement {
 
   static getStubConfig() {
     return {
-      title: 'Petfeeder',
+      main_title: 'My Feeder',
+      show_title: true,
       image: '/local/pet.jpg',
-      status: [null, null, null, null],
-      status_label: 'status:',
       last_feed_entity: '',
       today_grams_entity: '',
       today_doses_entity: '',
       schedules: [],
-      menu: [],
       left_status: [],
       tabs_config: {
         show_tabs: true,
@@ -472,55 +468,6 @@ class PetfeederCard extends HTMLElement {
     return row;
   }
 
-  // --- Status Row (bottom) ---
-
-  _renderStatuses() {
-    const container = document.createElement('div');
-    container.className = 'status-row';
-    (this._config.status || []).forEach((s) => {
-      if (!s || (!s.icon && !s.name)) return;
-      const item = document.createElement('div');
-      item.className = 'status-item';
-
-      let color = s.color || '#888';
-      if (s.entity && this._hass) {
-        const st = this._hass.states[s.entity];
-        if (st) {
-          if (s.color_map && Array.isArray(s.color_map)) {
-            const mapping = s.color_map.find(m => m.state === st.state);
-            if (mapping) color = mapping.color;
-          } else {
-            if (st.state === 'on' || st.state === 'home') color = '#4caf50';
-            else if (st.state === 'off' || st.state === 'unavailable') color = '#f44336';
-          }
-        }
-      }
-
-      if (s.name) {
-        const nameDiv = document.createElement('div');
-        nameDiv.className = 'status-label';
-        nameDiv.textContent = s.name;
-        item.appendChild(nameDiv);
-      }
-
-      if (s.icon) {
-        const dot = document.createElement('div');
-        dot.className = 'status-dot';
-        dot.style.borderColor = color;
-        dot.style.color = color;
-        const haIcon = document.createElement('ha-icon');
-        haIcon.setAttribute('icon', s.icon);
-        haIcon.style.width = '20px';
-        haIcon.style.height = '20px';
-        dot.appendChild(haIcon);
-        item.appendChild(dot);
-      }
-
-      container.appendChild(item);
-    });
-    return container;
-  }
-
   // --- Left Status Panel ---
 
   _renderLeftStatus() {
@@ -887,9 +834,11 @@ class PetfeederCard extends HTMLElement {
       img.alt = '';
       petName.appendChild(img);
     }
-    const nameSpan = document.createElement('span');
-    nameSpan.textContent = this._config.title || 'Petfeeder';
-    petName.appendChild(nameSpan);
+    if (this._config.show_title !== false) {
+      const nameSpan = document.createElement('span');
+      nameSpan.textContent = this._config.main_title || 'My Feeder';
+      petName.appendChild(nameSpan);
+    }
     header.appendChild(petName);
 
     const subLabel = document.createElement('div');
@@ -912,108 +861,91 @@ class PetfeederCard extends HTMLElement {
     wrap.appendChild(header);
 
     // --- Main Content Layout (left | center | right) ---
-    if (this._config.tabs_config?.show_tabs) {
-      const layout = document.createElement('div');
-      layout.className = 'card-layout';
+    const layout = document.createElement('div');
+    layout.className = 'card-layout';
 
-      // --- Left Panel: Status ---
-      const leftPanel = document.createElement('div');
-      leftPanel.className = 'card-left';
-      leftPanel.appendChild(this._renderLeftStatus());
-      layout.appendChild(leftPanel);
+    // --- Left Panel: Status ---
+    const leftPanel = document.createElement('div');
+    leftPanel.className = 'card-left';
+    leftPanel.appendChild(this._renderLeftStatus());
+    layout.appendChild(leftPanel);
 
-      // --- Center: Dial and Schedules ---
-      const centerPanel = document.createElement('div');
-      centerPanel.className = 'card-center';
+    // --- Center: Dial and Schedules ---
+    const centerPanel = document.createElement('div');
+    centerPanel.className = 'card-center';
 
-      // Schedule timeline
-      const scheduleSection = document.createElement('div');
-      scheduleSection.className = 'schedule-section' + (this._activeTab === 'schedules' ? ' active' : '');
-      scheduleSection.appendChild(this._renderScheduleTimeline());
-      centerPanel.appendChild(scheduleSection);
+    // Schedule timeline
+    const scheduleSection = document.createElement('div');
+    scheduleSection.className = 'schedule-section' + (this._activeTab === 'schedules' ? ' active' : '');
+    scheduleSection.appendChild(this._renderScheduleTimeline());
+    centerPanel.appendChild(scheduleSection);
 
-      layout.appendChild(centerPanel);
+    layout.appendChild(centerPanel);
 
-      // --- Right Panel: Tabs ---
-      const rightPanel = document.createElement('div');
-      rightPanel.className = 'card-right';
+    // --- Right Panel: Tabs ---
+    const rightPanel = document.createElement('div');
+    rightPanel.className = 'card-right';
 
-      const tabsContainer = document.createElement('div');
-      tabsContainer.className = 'tabs-container';
+    const tabsContainer = document.createElement('div');
+    tabsContainer.className = 'tabs-container';
 
-      // Tab headers
-      const tabsHeader = document.createElement('div');
-      tabsHeader.className = 'tabs-header';
+    // Tab headers
+    const tabsHeader = document.createElement('div');
+    tabsHeader.className = 'tabs-header';
 
-      const tabs = [
-        { key: 'schedules', label: this._config.tabs_config.schedules_label || 'Schedules' },
-        { key: 'manual_feed', label: this._config.tabs_config.manual_feed_label || 'Manual Feed' },
-        { key: 'stats', label: this._config.tabs_config.stats_label || 'Stats' },
-        { key: 'settings', label: this._config.tabs_config.settings_label || 'Settings' }
-      ];
+    const tabs = [
+      { key: 'schedules', label: this._config.tabs_config.schedules_label || 'Schedules' },
+      { key: 'manual_feed', label: this._config.tabs_config.manual_feed_label || 'Manual Feed' },
+      { key: 'stats', label: this._config.tabs_config.stats_label || 'Stats' },
+      { key: 'settings', label: this._config.tabs_config.settings_label || 'Settings' }
+    ];
 
-      tabs.forEach(tab => {
-        const tabBtn = document.createElement('button');
-        tabBtn.className = 'tab-btn' + (this._activeTab === tab.key ? ' active' : '');
-        tabBtn.textContent = tab.label;
-        tabBtn.addEventListener('click', () => {
-          this._activeTab = tab.key;
-          this.render();
-        });
-        tabsHeader.appendChild(tabBtn);
+    tabs.forEach(tab => {
+      const tabBtn = document.createElement('button');
+      tabBtn.className = 'tab-btn' + (this._activeTab === tab.key ? ' active' : '');
+      tabBtn.textContent = tab.label;
+      tabBtn.addEventListener('click', () => {
+        this._activeTab = tab.key;
+        this.render();
       });
+      tabsHeader.appendChild(tabBtn);
+    });
 
-      tabsContainer.appendChild(tabsHeader);
+    tabsContainer.appendChild(tabsHeader);
 
-      // Tab content
-      const tabsContent = document.createElement('div');
-      tabsContent.className = 'tabs-content';
+    // Tab content
+    const tabsContent = document.createElement('div');
+    tabsContent.className = 'tabs-content';
 
-      // Schedules tab content
-      const schedTab = document.createElement('div');
-      schedTab.className = 'schedule-section' + (this._activeTab === 'schedules' ? ' active' : '');
-      schedTab.appendChild(this._renderScheduleTimeline());
-      tabsContent.appendChild(schedTab);
+    // Schedules tab content
+    const schedTab = document.createElement('div');
+    schedTab.className = 'schedule-section' + (this._activeTab === 'schedules' ? ' active' : '');
+    schedTab.appendChild(this._renderScheduleTimeline());
+    tabsContent.appendChild(schedTab);
 
-      // Manual Feed tab
-      const manualFeedTab = document.createElement('div');
-      manualFeedTab.className = 'tab-content-manual-feed' + (this._activeTab === 'manual_feed' ? ' active' : '');
-      manualFeedTab.appendChild(this._renderManualFeedTab());
-      tabsContent.appendChild(manualFeedTab);
+    // Manual Feed tab
+    const manualFeedTab = document.createElement('div');
+    manualFeedTab.className = 'tab-content-manual-feed' + (this._activeTab === 'manual_feed' ? ' active' : '');
+    manualFeedTab.appendChild(this._renderManualFeedTab());
+    tabsContent.appendChild(manualFeedTab);
 
-      // Stats tab
-      const statsTab = document.createElement('div');
-      statsTab.className = 'tab-content-stats' + (this._activeTab === 'stats' ? ' active' : '');
-      statsTab.appendChild(this._renderStatsTab());
-      tabsContent.appendChild(statsTab);
+    // Stats tab
+    const statsTab = document.createElement('div');
+    statsTab.className = 'tab-content-stats' + (this._activeTab === 'stats' ? ' active' : '');
+    statsTab.appendChild(this._renderStatsTab());
+    tabsContent.appendChild(statsTab);
 
-      // Settings tab
-      const settingsTab = document.createElement('div');
-      settingsTab.className = 'tab-content-settings' + (this._activeTab === 'settings' ? ' active' : '');
-      settingsTab.appendChild(this._renderSettingsTab());
-      tabsContent.appendChild(settingsTab);
+    // Settings tab
+    const settingsTab = document.createElement('div');
+    settingsTab.className = 'tab-content-settings' + (this._activeTab === 'settings' ? ' active' : '');
+    settingsTab.appendChild(this._renderSettingsTab());
+    tabsContent.appendChild(settingsTab);
 
-      tabsContainer.appendChild(tabsContent);
-      rightPanel.appendChild(tabsContainer);
-      layout.appendChild(rightPanel);
+    tabsContainer.appendChild(tabsContent);
+    rightPanel.appendChild(tabsContainer);
+    layout.appendChild(rightPanel);
 
-      wrap.appendChild(layout);
-    } else {
-      // --- Default layout (no tabs) ---
-      const content = document.createElement('div');
-      content.className = 'card-content';
-      content.appendChild(this._renderScheduleTimeline());
-      wrap.appendChild(content);
-    }
-
-    // --- Status bar (bottom) ---
-    const hasStatus = (this._config.status || []).some(s => s && (s.icon || s.name));
-    if (hasStatus) {
-      const statusBar = document.createElement('div');
-      statusBar.className = 'status-bar';
-      statusBar.appendChild(this._renderStatuses());
-      wrap.appendChild(statusBar);
-    }
+    wrap.appendChild(layout);
 
     this._shadow.appendChild(wrap);
   }
@@ -1035,7 +967,6 @@ class PetfeederCardEditor extends HTMLElement {
     super();
     this._config = {};
     this._hass = null;
-    this._selectedMenuIdx = 0;
     this._selectedScheduleIdx = 0;
     this._expandedSections = {};
   }
@@ -1144,11 +1075,31 @@ class PetfeederCardEditor extends HTMLElement {
         this._dispatch();
       }));
 
-      // Status Label
-      body.appendChild(this._buildTextField('Status Label', this._config.status_label || 'status:', 'e.g., status:', v => {
-        this._config.status_label = v || 'status:';
+      // Main Title
+      body.appendChild(this._buildTextField('Main Title', this._config.main_title || 'My Feeder', 'e.g., My Feeder', v => {
+        this._config.main_title = v || 'My Feeder';
         this._dispatch();
       }));
+
+      // Show Title Toggle
+      const showTitleRow = document.createElement('div');
+      showTitleRow.className = 'popup-row';
+      showTitleRow.style.cssText = 'margin-bottom:16px;display:flex;justify-content:space-between;align-items:center';
+      const showTitleLabel = document.createElement('label');
+      showTitleLabel.className = 'pf-field-label';
+      showTitleLabel.textContent = 'Show Title';
+      showTitleLabel.style.cssText = 'margin:0';
+      const showTitleToggle = document.createElement('div');
+      showTitleToggle.className = 'toggle' + (this._config.show_title !== false ? ' on' : '');
+      showTitleToggle.innerHTML = '<div class="toggle-thumb"></div>';
+      showTitleToggle.addEventListener('click', () => {
+        this._config.show_title = !this._config.show_title;
+        showTitleToggle.classList.toggle('on');
+        this._dispatch();
+      });
+      showTitleRow.appendChild(showTitleLabel);
+      showTitleRow.appendChild(showTitleToggle);
+      body.appendChild(showTitleRow);
 
       // Last Feed Entity
       body.appendChild(this._buildHaEntityPicker('Last Feed Entity', this._config.last_feed_entity || '', v => {
@@ -1167,123 +1118,6 @@ class PetfeederCardEditor extends HTMLElement {
         this._config.today_doses_entity = v || null;
         this._dispatch();
       }));
-
-      // Status Icons
-      const statusTitle = document.createElement('div');
-      statusTitle.style.cssText = 'font-size:14px;font-weight:500;color:var(--primary-text-color);margin:16px 0 8px';
-      statusTitle.textContent = 'Status Icons';
-      body.appendChild(statusTitle);
-
-      for (let i = 0; i < 4; i++) {
-        if (!this._config.status) this._config.status = [null, null, null, null];
-        if (!this._config.status[i]) this._config.status[i] = {};
-        const s = this._config.status[i];
-
-        const card = document.createElement('div');
-        card.className = 'pf-status-card';
-
-        const title = document.createElement('div');
-        title.className = 'pf-status-title';
-        title.textContent = `Status Icon ${i + 1}`;
-        card.appendChild(title);
-
-        // Entity picker (native HA)
-        card.appendChild(this._buildHaEntityPicker('Entity', s.entity || '', v => {
-          this._config.status[i].entity = v || null;
-          this._dispatch();
-        }));
-
-        // Name
-        card.appendChild(this._buildTextField('Name', s.name || '', 'e.g., Feeding', v => {
-          this._config.status[i].name = v || null;
-          this._dispatch();
-        }));
-
-        // Icon picker (native HA)
-        card.appendChild(this._buildHaIconPicker('Icon', s.icon || '', v => {
-          this._config.status[i].icon = v || null;
-          this._dispatch();
-        }));
-
-        // Color mapping
-        card.appendChild(this._buildColorMapping(i));
-
-        body.appendChild(card);
-      }
-    }));
-
-    // === MENU SECTION ===
-    editor.appendChild(this._buildSection('Menu', false, (body) => {
-      const addBtn = document.createElement('button');
-      addBtn.className = 'pf-btn pf-btn-primary pf-btn-sm';
-      addBtn.textContent = '+ Add Menu Option';
-      addBtn.style.marginBottom = '12px';
-      addBtn.addEventListener('click', () => {
-        this._config.menu = this._config.menu || [];
-        this._config.menu.push({ name: `Option ${this._config.menu.length + 1}`, content: '' });
-        this._selectedMenuIdx = this._config.menu.length - 1;
-        this._dispatch();
-        this._render();
-      });
-      body.appendChild(addBtn);
-
-      if (this._config.menu && this._config.menu.length > 0) {
-        const tabs = document.createElement('div');
-        tabs.className = 'pf-tabs';
-        this._config.menu.forEach((m, idx) => {
-          const tab = document.createElement('div');
-          tab.className = 'pf-tab' + (idx === this._selectedMenuIdx ? ' active' : '');
-          tab.textContent = m.name || `Option ${idx + 1}`;
-          tab.addEventListener('click', () => {
-            this._selectedMenuIdx = idx;
-            this._render();
-          });
-          tabs.appendChild(tab);
-        });
-        body.appendChild(tabs);
-
-        const m = this._config.menu[this._selectedMenuIdx];
-        if (m) {
-          const tabContent = document.createElement('div');
-          tabContent.className = 'pf-tab-content';
-
-          tabContent.appendChild(this._buildTextField('Option Name', m.name || '', '', v => {
-            this._config.menu[this._selectedMenuIdx].name = v;
-            this._dispatch();
-          }));
-
-          const contentField = document.createElement('div');
-          contentField.className = 'pf-field';
-          const contentLabel = document.createElement('label');
-          contentLabel.className = 'pf-field-label';
-          contentLabel.textContent = 'Content';
-          const ta = document.createElement('textarea');
-          ta.className = 'pf-textarea';
-          ta.rows = 4;
-          ta.value = m.content || '';
-          ta.addEventListener('change', e => {
-            this._config.menu[this._selectedMenuIdx].content = e.target.value;
-            this._dispatch();
-          });
-          contentField.appendChild(contentLabel);
-          contentField.appendChild(ta);
-          tabContent.appendChild(contentField);
-
-          const removeBtn = document.createElement('button');
-          removeBtn.className = 'pf-btn pf-btn-danger pf-btn-sm';
-          removeBtn.textContent = 'Remove This Option';
-          removeBtn.style.marginTop = '8px';
-          removeBtn.addEventListener('click', () => {
-            this._config.menu.splice(this._selectedMenuIdx, 1);
-            this._selectedMenuIdx = Math.max(0, this._selectedMenuIdx - 1);
-            this._dispatch();
-            this._render();
-          });
-          tabContent.appendChild(removeBtn);
-
-          body.appendChild(tabContent);
-        }
-      }
     }));
 
     // === SCHEDULES SECTION ===
