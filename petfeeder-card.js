@@ -1014,6 +1014,14 @@ class PetfeederCard extends HTMLElement {
       tabContentArea.classList.add('no-animate');
     }
 
+    // If tab was already open on previous render, skip animation
+    const isNewTabOpen = this._activeTab && this._activeTab !== this._prevActiveTab;
+    const wasAlreadyOpen = this._activeTab && this._activeTab === this._prevActiveTab;
+    if (wasAlreadyOpen) {
+      tabContentArea.classList.add('active');
+    }
+    this._prevActiveTab = this._activeTab;
+
     // Close button (will be added at the end, after content)
     const closeBtn = document.createElement('button');
     closeBtn.className = 'tab-content-close-btn';
@@ -1024,6 +1032,7 @@ class PetfeederCard extends HTMLElement {
       const duration = this._config.disable_animations ? 0 : 400;
       setTimeout(() => {
         this._activeTab = null;
+        this._prevActiveTab = null;
         this.render();
       }, duration);
     });
@@ -1059,8 +1068,8 @@ class PetfeederCard extends HTMLElement {
 
     this._shadow.appendChild(wrap);
 
-    // Trigger open animation after element is in the DOM
-    if (this._activeTab) {
+    // Trigger open animation only when a new tab is being opened
+    if (isNewTabOpen) {
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
           tabContentArea.classList.add('active');
