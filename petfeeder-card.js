@@ -163,6 +163,7 @@ class PetfeederCard extends HTMLElement {
   // --- SVG Dial ---
 
   _renderDial() {
+    const todayGrams = this._getTodayGrams();
     const schedules = this._getScheduleData().filter(s => s.enabled);
     const accentColor = this._config.accent_color || '#4db6ac';
     const errorColor = '#ff6b6b';
