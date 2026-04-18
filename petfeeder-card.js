@@ -430,6 +430,9 @@ class PetfeederCard extends HTMLElement {
     this._popupOpen = true;
 
     const closePopup = () => {
+      // Remove blur from card
+      const card = this._shadow.querySelector('.card');
+      if (card) card.classList.remove('popup-open');
       overlay.remove();
       this._popupOpen = false;
       this.render();
@@ -532,6 +535,10 @@ class PetfeederCard extends HTMLElement {
 
     overlay.appendChild(popup);
     this._shadow.appendChild(overlay);
+    
+    // Apply blur to card when popup opens
+    const card = this._shadow.querySelector('.card');
+    if (card) card.classList.add('popup-open');
   }
 
   _popupRow(label, type, value, min, max) {
@@ -896,7 +903,8 @@ class PetfeederCard extends HTMLElement {
       .settings-value{font-size:12px;color:var(--secondary-text-color,#888)}
       .settings-btn{padding:6px 10px;border:1px solid var(--divider-color,#e0e0e0);background:var(--ha-card-background,#fff);color:var(--primary-text-color,#333);border-radius:4px;font-size:11px;cursor:pointer;transition:all 0.2s}
       .settings-btn:hover{background:var(--secondary-background-color,#f5f5f5);border-color:${accentColor}}
-      .popup-overlay{position:absolute;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:100;border-radius:12px}
+      .popup-overlay{position:absolute;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:100;border-radius:12px;backdrop-filter:blur(4px)}
+      .card.popup-open{filter:blur(2px);pointer-events:none}
       .popup{background:var(--ha-card-background, #fff);border-radius:12px;padding:24px;min-width:260px;max-width:320px;position:relative;box-shadow:0 8px 32px rgba(0,0,0,0.2)}
       .popup-title{font-size:18px;font-weight:500;color:var(--primary-text-color,#333);margin-bottom:20px;text-align:center}
       .popup-row{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px}
