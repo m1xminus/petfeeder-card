@@ -6,35 +6,27 @@ class PetfeederCard extends HTMLElement {
     this._shadow = this.attachShadow({ mode: 'open' });
     this._domBuilt = false;
     this._renderTimer = null;
-    this._resizeObserver = null;
-    this._wasVisible = false;
+    this._connectTimer = null;
   }
 
   connectedCallback() {
     // Force rebuild when re-attached (e.g., popup opens)
     this._domBuilt = false;
-    this._wasVisible = false;
     if (this._hass) {
       this.render();
     }
 
-    // Watch for visibility changes (Bubble Card popups use display:none)
-    // When the card transitions from hidden to visible, force a re-render
-    if (!this._resizeObserver) {
-      this._resizeObserver = new ResizeObserver((entries) => {
-        for (const entry of entries) {
-          const isVisible = entry.contentRect.width > 0 && entry.contentRect.height > 0;
-          if (isVisible && !this._wasVisible) {
-            // Card just became visible (popup opened)
-            this._wasVisible = true;
-            this._domBuilt = false;
-            this.render();
-          }
-          this._wasVisible = isVisible;
-        }
-      });
-      this._resizeObserver.observe(this);
-    }
+    // Bubble Card popup workaround: the popup uses contain:layout paint
+    // during its 300ms open animation. Android WebView doesn't repaint
+    // canvas/layout after contain is removed. Force a full re-render
+    // after the animation completes.
+    clearTimeout(this._connectTimer);
+    this._connectTimer = setTimeout(() => {
+      if (this.isConnected && this._hass) {
+        this._domBuilt = false;
+        this.render();
+      }
+    }, 450);
   }
 
   disconnectedCallback() {
@@ -42,12 +34,11 @@ class PetfeederCard extends HTMLElement {
       clearTimeout(this._renderTimer);
       this._renderTimer = null;
     }
-    if (this._resizeObserver) {
-      this._resizeObserver.disconnect();
-      this._resizeObserver = null;
+    if (this._connectTimer) {
+      clearTimeout(this._connectTimer);
+      this._connectTimer = null;
     }
     this._domBuilt = false;
-    this._wasVisible = false;
   }
 
   setConfig(config) {
@@ -477,7 +468,7 @@ class PetfeederCard extends HTMLElement {
     const headerBg = this._hexToRgba(headerColor, headerOpacity);
 
     const style = `
-      :host{display:block;box-sizing:border-box;padding:0;font-family:Roboto, sans-serif}
+      :host{display:block;box-sizing:border-box;padding:0;font-family:Roboto, sans-serif;transform:translateZ(0);will-change:contents}
       .compact-card{display:flex;flex-direction:column;border-radius:12px;overflow:hidden;background:var(--ha-card-background, #fff);box-shadow:var(--ha-card-box-shadow, 0 2px 6px rgba(0,0,0,0.1));cursor:pointer}
       .compact-header{background:${headerBg};padding:12px 16px;display:flex;gap:12px;align-items:flex-start}
       .compact-image{width:40px;height:40px;border-radius:50%;object-fit:cover;flex-shrink:0}
@@ -780,71 +771,110 @@ class PetfeederCard extends HTMLElement {
     const hasError = errorSensor && this._hass?.states[errorSensor]?.state === 'on';
 
     const size = 200;
+    const dpr = window.devicePixelRatio || 1;
     const cx = size / 2;
     const cy = size / 2;
     const radius = 80;
     const strokeWidth = 12;
-    const circumference = 2 * Math.PI * radius;
 
-    // Build SVG as HTML string for Android WebView compatibility
-    let svgContent = `<circle cx="${cx}" cy="${cy}" r="${radius}" fill="none" stroke="${trackColor}" stroke-width="14" opacity="0.25"/>`;
+    // Create canvas element - use devicePixelRatio for crisp rendering
+    const canvas = document.createElement('canvas');
+    canvas.width = size * dpr;
+    canvas.height = size * dpr;
+    canvas.style.cssText = 'display:block;width:100%;height:auto;max-width:200px;max-height:200px';
+    const ctx = canvas.getContext('2d');
+    ctx.scale(dpr, dpr);
+
+    // Draw background track circle
+    ctx.beginPath();
+    ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+    ctx.strokeStyle = trackColor;
+    ctx.lineWidth = 14;
+    ctx.globalAlpha = 0.25;
+    ctx.stroke();
+    ctx.globalAlpha = 1;
 
     if (schedules.length > 0) {
-      const gap = 8;
+      const gap = 8; // degrees
+      const gapRad = (gap * Math.PI) / 180;
       const totalGap = gap * schedules.length;
       const availableDeg = 360 - totalGap;
       const segmentDeg = availableDeg / schedules.length;
-      const segmentRad = (segmentDeg / 360) * circumference;
-      let currentAngle = -90;
+      const segmentRad = (segmentDeg * Math.PI) / 180;
+      let currentAngle = -Math.PI / 2; // start at top (−90°)
 
       schedules.forEach((sched, idx) => {
-        const offset = -((currentAngle + 90) / 360) * circumference;
+        const startAngle = currentAngle;
+        const endAngle = currentAngle + segmentRad;
 
         // Background segment
-        svgContent += `<circle cx="${cx}" cy="${cy}" r="${radius}" fill="none" stroke="${trackColor}" stroke-width="${strokeWidth}" stroke-dasharray="${segmentRad} ${circumference}" stroke-dashoffset="${offset}" stroke-linecap="round" opacity="0.15"/>`;
+        ctx.beginPath();
+        ctx.arc(cx, cy, radius, startAngle, endAngle);
+        ctx.strokeStyle = trackColor;
+        ctx.lineWidth = strokeWidth;
+        ctx.lineCap = 'round';
+        ctx.globalAlpha = 0.15;
+        ctx.stroke();
+        ctx.globalAlpha = 1;
 
-        // Determine schedule status
+        // Determine if schedule has passed
         const scheduleTime = new Date(now);
         scheduleTime.setHours(sched.hour, sched.minute, 0, 0);
         const isSchedulePassed = now >= scheduleTime;
 
-        // Only fill if schedule has passed
         if (isSchedulePassed) {
-          const strokeColor = hasError ? errorColor : accentColor;
-          svgContent += `<circle cx="${cx}" cy="${cy}" r="${radius}" fill="none" stroke="${strokeColor}" stroke-width="${strokeWidth}" stroke-dasharray="${segmentRad} ${circumference}" stroke-dashoffset="${offset}" stroke-linecap="round"/>`;
+          ctx.beginPath();
+          ctx.arc(cx, cy, radius, startAngle, endAngle);
+          ctx.strokeStyle = hasError ? errorColor : accentColor;
+          ctx.lineWidth = strokeWidth;
+          ctx.lineCap = 'round';
+          ctx.stroke();
         }
 
-        // Add visible separator line at the end of each segment
+        // Separator line at end of segment + gap
         if (idx < schedules.length) {
-          const angleAfterGap = currentAngle + segmentDeg + gap;
-          const angleRad = (angleAfterGap * Math.PI) / 180;
-          const x1 = cx + (radius - strokeWidth / 2) * Math.cos(angleRad);
-          const y1 = cy + (radius - strokeWidth / 2) * Math.sin(angleRad);
-          const x2 = cx + (radius + strokeWidth / 2) * Math.cos(angleRad);
-          const y2 = cy + (radius + strokeWidth / 2) * Math.sin(angleRad);
-          svgContent += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${trackColor}" stroke-width="1.5" opacity="0.4"/>`;
+          const sepAngle = endAngle + gapRad;
+          const x1 = cx + (radius - strokeWidth / 2) * Math.cos(sepAngle);
+          const y1 = cy + (radius - strokeWidth / 2) * Math.sin(sepAngle);
+          const x2 = cx + (radius + strokeWidth / 2) * Math.cos(sepAngle);
+          const y2 = cy + (radius + strokeWidth / 2) * Math.sin(sepAngle);
+          ctx.beginPath();
+          ctx.moveTo(x1, y1);
+          ctx.lineTo(x2, y2);
+          ctx.strokeStyle = trackColor;
+          ctx.lineWidth = 1.5;
+          ctx.lineCap = 'butt';
+          ctx.globalAlpha = 0.4;
+          ctx.stroke();
+          ctx.globalAlpha = 1;
         }
 
-        currentAngle += segmentDeg + gap;
+        currentAngle = endAngle + gapRad;
       });
     } else {
-      // No schedules: show simple progress ring
+      // No schedules: simple progress ring
+      const circumference = 2 * Math.PI;
       const ratio = Math.min(todayGrams / 100, 1);
-      const filledRad = ratio * circumference;
-      svgContent += `<circle cx="${cx}" cy="${cy}" r="${radius}" fill="none" stroke="${accentColor}" stroke-width="${strokeWidth}" stroke-dasharray="${filledRad} ${circumference}" stroke-dashoffset="${circumference * 0.25}" stroke-linecap="round"/>`;
+      const startAngle = -Math.PI / 2;
+      const endAngle = startAngle + ratio * circumference;
+      ctx.beginPath();
+      ctx.arc(cx, cy, radius, startAngle, endAngle);
+      ctx.strokeStyle = accentColor;
+      ctx.lineWidth = strokeWidth;
+      ctx.lineCap = 'round';
+      ctx.stroke();
     }
 
     const todayDoses = this._getTodayDoses();
 
     const container = document.createElement('div');
     container.className = 'dial-container';
-    container.innerHTML = `
-      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${size} ${size}" width="${size}" height="${size}" style="display:block;max-width:100%;max-height:100%">${svgContent}</svg>
-      <div class="dial-center">
-        <div class="dial-grams">${todayDoses}</div>
-        <div class="dial-label">${this._t('portions')} (${Math.round(todayGrams)}g)</div>
-      </div>
-    `;
+    container.appendChild(canvas);
+
+    const centerDiv = document.createElement('div');
+    centerDiv.className = 'dial-center';
+    centerDiv.innerHTML = `<div class="dial-grams">${todayDoses}</div><div class="dial-label">${this._t('portions')} (${Math.round(todayGrams)}g)</div>`;
+    container.appendChild(centerDiv);
 
     return container;
   }
@@ -1367,7 +1397,7 @@ class PetfeederCard extends HTMLElement {
     const contentBg = this._hexToRgba(contentColor, contentOpacity);
 
     const style = `
-      :host{display:block;box-sizing:border-box;padding:0;max-width:800px;margin:0 auto;font-family:Roboto, sans-serif}
+      :host{display:block;box-sizing:border-box;padding:0;max-width:800px;margin:0 auto;font-family:Roboto, sans-serif;transform:translateZ(0);will-change:contents}
       .card{border-radius:12px;overflow:hidden;background:var(--ha-card-background, #fff);box-shadow:var(--ha-card-box-shadow, 0 2px 6px rgba(0,0,0,0.1));display:flex;flex-direction:column}
       .card-header{background:${headerBg};padding:20px 16px 0;text-align:center;position:relative}
       .pet-name{font-size:16px;font-weight:500;color:var(--primary-text-color,#333);display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:4px}
