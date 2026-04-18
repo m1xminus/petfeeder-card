@@ -12,16 +12,16 @@ class PetfeederCard extends HTMLElement {
       compact: false,
       image: '',
       status: [null, null, null, null],
-      menu: [
-        { name: 'Info', content: 'Info content' },
-        { name: 'Logs', content: 'Logs content' },
-        { name: 'Feed Now', content: 'Feed Now' },
-        { name: 'Settings', content: 'Settings' }
-      ],
+      menu: [],
       last_feed_entity: null,
-      schedules: []
+      schedules: [],
+      status_label: 'status:',
+      header_color: '#ffffff',
+      header_opacity: 1,
+      content_color: '#fafafa',
+      content_opacity: 1
     }, config || {});
-    this._selectedMenu = (this._config.menu && this._config.menu[0]) ? this._config.menu[0].name : null;
+    this._selectedMenu = 'Info';
     this.render();
   }
 
@@ -38,12 +38,21 @@ class PetfeederCard extends HTMLElement {
       title: 'Petfeeder',
       image: '/local/pet.jpg',
       status: [null, null, null, null],
-      menu: [
-        { name: 'Info', content: 'Pet info' },
-        { name: 'Logs', content: 'Feeding logs' }
-      ],
+      status_label: 'status:',
       last_feed_entity: 'sensor.last_feeding',
-      schedules: []
+      schedules: [
+        {
+          hour_entity: 'number.schedule_1_hour',
+          minute_entity: 'number.schedule_1_minute',
+          doses_entity: 'number.schedule_1_doses',
+          enabled_entity: 'switch.schedule_1_enabled',
+          info_entity: 'sensor.schedule_1_info'
+        }
+      ],
+      menu: [
+        { name: 'Logs', content: 'Feeding logs' },
+        { name: 'Settings', content: 'Settings' }
+      ]
     };
   }
 
@@ -149,13 +158,22 @@ class PetfeederCard extends HTMLElement {
     menuWrap.className = 'menu-wrap';
     const select = document.createElement('select');
     select.className = 'menu-select';
+    
+    // Always add Info tab first
+    const infoOpt = document.createElement('option');
+    infoOpt.value = 'Info';
+    infoOpt.textContent = 'Info';
+    select.appendChild(infoOpt);
+    
+    // Then add custom menu items
     (this._config.menu || []).forEach(m => {
       const opt = document.createElement('option');
       opt.value = m.name;
       opt.textContent = m.name;
       select.appendChild(opt);
     });
-    select.value = this._selectedMenu || (this._config.menu[0] && this._config.menu[0].name);
+    
+    select.value = this._selectedMenu || 'Info';
     select.addEventListener('change', e => {
       this._selectedMenu = e.target.value;
       this.render();
@@ -179,25 +197,106 @@ class PetfeederCard extends HTMLElement {
   _computeNextSchedule() {
     const now = new Date();
     const candidates = [];
-    (this._config.schedules || []).forEach(s => {
-      if (!s) return;
-      if (typeof s === 'string' && s.indexOf('.') > 0 && this._hass) {
-        const st = this._hass.states[s];
-        if (st) {
-          const val = st.state;
-          const d = new Date(val);
-          if (!isNaN(d)) candidates.push(d);
+
+    (this._config.schedules || []).forEach(schedule => {
+      if (!schedule || !this._hass) return;
+
+      // Check if schedule is enabled
+      if (schedule.enabled_entity) {
+        const enabledState = this._hass.states[schedule.enabled_entity];
+        if (!enabledState || enabledState.state === 'off') return;
+      }
+
+      // Get hour and minute from entities
+      const hourState = schedule.hour_entity ? this._hass.states[schedule.hour_entity] : null;
+      const minuteState = schedule.minute_entity ? this._hass.states[schedule.minute_entity] : null;
+
+      if (hourState && minuteState) {
+        const h = parseInt(hourState.state, 10);
+        const m = parseInt(minuteState.state, 10);
+
+        if (isNaN(h) || isNaN(m)) return;
+
+        // Create datetime for today at this time
+        let dt = new Date(now);
+        dt.setHours(h, m, 0, 0);
+
+        // If time has passed today, try tomorrow
+        if (dt <= now) {
+          dt = new Date(now);
+          dt.setDate(dt.getDate() + 1);
+          dt.setHours(h, m, 0, 0);
         }
-      } else {
-        const d = new Date(s);
-        if (!isNaN(d)) candidates.push(d);
+
+        candidates.push({ datetime: dt, schedule });
       }
     });
-    candidates.sort((a, b) => a - b);
-    for (const d of candidates) {
-      if (d > now) return d;
+
+    // Sort by datetime and return the earliest future one
+    candidates.sort((a, b) => a.datetime - b.datetime);
+    return candidates.length > 0 ? candidates[0] : null;
+  }
+
+  _renderSchedules() {
+    const container = document.createElement('div');
+    container.style.marginTop = '12px';
+
+    if (!this._config.schedules || this._config.schedules.length === 0) {
+      const empty = document.createElement('div');
+      empty.style.color = '#999';
+      empty.style.fontSize = '12px';
+      empty.textContent = 'No schedules configured';
+      container.appendChild(empty);
+      return container;
     }
-    return candidates.length ? candidates[0] : null;
+
+    (this._config.schedules || []).forEach((schedule, idx) => {
+      if (!schedule) return;
+
+      const scheduleItem = document.createElement('div');
+      scheduleItem.style.cssText = 'border-bottom:1px solid #eee;padding:8px 0;';
+
+      const timeRow = document.createElement('div');
+      timeRow.className = 'row';
+      const timeLabel = document.createElement('div');
+      timeLabel.className = 'label';
+      timeLabel.textContent = `Schedule ${idx + 1}:`;
+      const timeValue = document.createElement('div');
+      timeValue.className = 'value';
+
+      // Display time and info from entities
+      if (this._hass && schedule.info_entity) {
+        const infoState = this._hass.states[schedule.info_entity];
+        if (infoState) {
+          timeValue.textContent = infoState.state;
+        } else {
+          timeValue.textContent = '—';
+        }
+      } else {
+        // Fallback: show hour:minute from entities
+        const hourState = this._hass && schedule.hour_entity ? this._hass.states[schedule.hour_entity] : null;
+        const minuteState = this._hass && schedule.minute_entity ? this._hass.states[schedule.minute_entity] : null;
+        const dosesState = this._hass && schedule.doses_entity ? this._hass.states[schedule.doses_entity] : null;
+
+        let text = '—';
+        if (hourState && minuteState) {
+          const h = String(hourState.state).padStart(2, '0');
+          const m = String(minuteState.state).padStart(2, '0');
+          text = `${h}:${m}`;
+          if (dosesState) {
+            text += ` (${dosesState.state}x doses)`;
+          }
+        }
+        timeValue.textContent = text;
+      }
+
+      timeRow.appendChild(timeLabel);
+      timeRow.appendChild(timeValue);
+      scheduleItem.appendChild(timeRow);
+      container.appendChild(scheduleItem);
+    });
+
+    return container;
   }
 
   _renderContent() {
@@ -230,8 +329,28 @@ class PetfeederCard extends HTMLElement {
     nsLabel.textContent = 'Next Schedule:';
     const nsValue = document.createElement('div');
     nsValue.className = 'value';
-    const next = this._computeNextSchedule();
-    nsValue.textContent = next ? this._formatDateTime(next) : '—';
+    const nextSchedule = this._computeNextSchedule();
+    if (nextSchedule && this._hass) {
+      const hourState = this._hass.states[nextSchedule.schedule.hour_entity];
+      const minuteState = this._hass.states[nextSchedule.schedule.minute_entity];
+      const dosesState = this._hass.states[nextSchedule.schedule.doses_entity];
+      const infoState = this._hass.states[nextSchedule.schedule.info_entity];
+
+      let text = '';
+      if (infoState) {
+        text = infoState.state;
+      } else if (hourState && minuteState) {
+        const h = String(hourState.state).padStart(2, '0');
+        const m = String(minuteState.state).padStart(2, '0');
+        text = `${h}:${m}`;
+        if (dosesState) {
+          text += ` (${dosesState.state}x)`;
+        }
+      }
+      nsValue.textContent = text || '—';
+    } else {
+      nsValue.textContent = '—';
+    }
     nextRow.appendChild(nsLabel);
     nextRow.appendChild(nsValue);
 
@@ -241,8 +360,15 @@ class PetfeederCard extends HTMLElement {
     const menuContent = document.createElement('div');
     menuContent.className = 'menu-content';
     const sel = this._selectedMenu;
-    const menu = (this._config.menu || []).find(m => m.name === sel) || (this._config.menu && this._config.menu[0]);
-    menuContent.textContent = menu ? menu.content : '';
+
+    // Check if Info tab is selected
+    if (sel === 'Info') {
+      menuContent.appendChild(this._renderSchedules());
+    } else {
+      // Custom menu item
+      const menu = (this._config.menu || []).find(m => m.name === sel) || (this._config.menu && this._config.menu[0]);
+      menuContent.textContent = menu ? menu.content : '';
+    }
 
     content.appendChild(menuContent);
     return content;
@@ -313,6 +439,7 @@ class PetfeederCardEditor extends HTMLElement {
     this._config = {};
     this._hass = null;
     this._selectedMenuIdx = 0;
+    this._selectedScheduleIdx = 0;
     this._expandedSections = {};
   }
 
@@ -426,6 +553,12 @@ class PetfeederCardEditor extends HTMLElement {
         this._dispatch();
       }));
 
+      // Last Feed Entity
+      body.appendChild(this._buildHaEntityPicker('Last Feed Entity', this._config.last_feed_entity || '', v => {
+        this._config.last_feed_entity = v || null;
+        this._dispatch();
+      }));
+
       // Status Icons
       const statusTitle = document.createElement('div');
       statusTitle.style.cssText = 'font-size:14px;font-weight:500;color:var(--primary-text-color);margin:16px 0 8px';
@@ -534,6 +667,93 @@ class PetfeederCardEditor extends HTMLElement {
           removeBtn.addEventListener('click', () => {
             this._config.menu.splice(this._selectedMenuIdx, 1);
             this._selectedMenuIdx = Math.max(0, this._selectedMenuIdx - 1);
+            this._dispatch();
+            this._render();
+          });
+          tabContent.appendChild(removeBtn);
+
+          body.appendChild(tabContent);
+        }
+      }
+    }));
+
+    // === SCHEDULES SECTION ===
+    editor.appendChild(this._buildSection('Schedules', false, (body) => {
+      const addScheduleBtn = document.createElement('button');
+      addScheduleBtn.className = 'pf-btn pf-btn-primary pf-btn-sm';
+      addScheduleBtn.textContent = '+ Add Schedule';
+      addScheduleBtn.style.marginBottom = '12px';
+      addScheduleBtn.addEventListener('click', () => {
+        if (!this._config.schedules) this._config.schedules = [];
+        this._config.schedules.push({
+          hour_entity: '',
+          minute_entity: '',
+          doses_entity: '',
+          enabled_entity: '',
+          info_entity: ''
+        });
+        this._dispatch();
+        this._render();
+      });
+      body.appendChild(addScheduleBtn);
+
+      if (this._config.schedules && this._config.schedules.length > 0) {
+        const tabs = document.createElement('div');
+        tabs.className = 'pf-tabs';
+        this._config.schedules.forEach((schedule, idx) => {
+          const tab = document.createElement('div');
+          tab.className = 'pf-tab' + (idx === this._selectedScheduleIdx ? ' active' : '');
+          tab.textContent = `Schedule ${idx + 1}`;
+          tab.addEventListener('click', () => {
+            this._selectedScheduleIdx = idx;
+            this._render();
+          });
+          tabs.appendChild(tab);
+        });
+        body.appendChild(tabs);
+
+        const schedule = this._config.schedules[this._selectedScheduleIdx];
+        if (schedule) {
+          const tabContent = document.createElement('div');
+          tabContent.className = 'pf-tab-content';
+
+          // Hour entity
+          tabContent.appendChild(this._buildHaEntityPicker('Hour Entity', schedule.hour_entity || '', v => {
+            this._config.schedules[this._selectedScheduleIdx].hour_entity = v || null;
+            this._dispatch();
+          }));
+
+          // Minute entity
+          tabContent.appendChild(this._buildHaEntityPicker('Minute Entity', schedule.minute_entity || '', v => {
+            this._config.schedules[this._selectedScheduleIdx].minute_entity = v || null;
+            this._dispatch();
+          }));
+
+          // Doses entity
+          tabContent.appendChild(this._buildHaEntityPicker('Doses Entity', schedule.doses_entity || '', v => {
+            this._config.schedules[this._selectedScheduleIdx].doses_entity = v || null;
+            this._dispatch();
+          }));
+
+          // Enabled entity
+          tabContent.appendChild(this._buildHaEntityPicker('Enabled Entity', schedule.enabled_entity || '', v => {
+            this._config.schedules[this._selectedScheduleIdx].enabled_entity = v || null;
+            this._dispatch();
+          }));
+
+          // Info entity
+          tabContent.appendChild(this._buildHaEntityPicker('Info Entity', schedule.info_entity || '', v => {
+            this._config.schedules[this._selectedScheduleIdx].info_entity = v || null;
+            this._dispatch();
+          }));
+
+          const removeBtn = document.createElement('button');
+          removeBtn.className = 'pf-btn pf-btn-danger pf-btn-sm';
+          removeBtn.textContent = 'Remove This Schedule';
+          removeBtn.style.marginTop = '8px';
+          removeBtn.addEventListener('click', () => {
+            this._config.schedules.splice(this._selectedScheduleIdx, 1);
+            this._selectedScheduleIdx = Math.max(0, this._selectedScheduleIdx - 1);
             this._dispatch();
             this._render();
           });
