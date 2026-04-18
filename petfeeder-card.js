@@ -22,8 +22,29 @@ class PetfeederCard extends HTMLElement {
       header_opacity: 1,
       content_color: '#fafafa',
       content_opacity: 1,
-      accent_color: '#4db6ac'
+      accent_color: '#4db6ac',
+      left_status: [],
+      tabs_config: {
+        show_tabs: false,
+        active_tab: 'schedules',
+        schedules_label: 'Schedules',
+        manual_feed_label: 'Manual Feed',
+        stats_label: 'Stats',
+        settings_label: 'Settings',
+        manual_feed: {
+          quick_feeds: [
+            { name: 'Quick Feed 1', doses: 1 },
+            { name: 'Quick Feed 2', doses: 2 },
+            { name: 'Quick Feed 3', doses: 3 }
+          ],
+          custom_doses_entity: '',
+          feed_button_entity: ''
+        },
+        stats: [],
+        settings: []
+      }
     }, config || {});
+    this._activeTab = this._config.tabs_config?.active_tab || 'schedules';
     this.render();
   }
 
@@ -45,7 +66,23 @@ class PetfeederCard extends HTMLElement {
       today_grams_entity: '',
       today_doses_entity: '',
       schedules: [],
-      menu: []
+      menu: [],
+      left_status: [],
+      tabs_config: {
+        show_tabs: true,
+        active_tab: 'schedules',
+        schedules_label: 'Schedules',
+        manual_feed_label: 'Manual Feed',
+        stats_label: 'Stats',
+        settings_label: 'Settings',
+        manual_feed: {
+          quick_feeds: [],
+          custom_doses_entity: '',
+          feed_button_entity: ''
+        },
+        stats: [],
+        settings: []
+      }
     };
   }
 
@@ -484,6 +521,258 @@ class PetfeederCard extends HTMLElement {
     return container;
   }
 
+  // --- Left Status Panel ---
+
+  _renderLeftStatus() {
+    const container = document.createElement('div');
+    container.className = 'left-status-panel';
+
+    if (!this._config.left_status || this._config.left_status.length === 0) {
+      return container;
+    }
+
+    this._config.left_status.forEach(item => {
+      if (!item || (!item.entity && !item.name)) return;
+
+      const itemEl = document.createElement('div');
+      itemEl.className = 'left-status-item';
+
+      let color = '#888';
+      let state = '';
+
+      if (item.entity && this._hass) {
+        const st = this._hass.states[item.entity];
+        if (st) {
+          state = st.state;
+          if (item.color_map && Array.isArray(item.color_map)) {
+            const mapping = item.color_map.find(m => m.state === st.state);
+            if (mapping) color = mapping.color;
+          } else {
+            color = st.state === 'on' || st.state === 'home' ? '#4caf50' : '#f44336';
+          }
+        }
+      }
+
+      if (item.show_icon !== false && item.icon) {
+        const iconDiv = document.createElement('div');
+        iconDiv.className = 'left-status-icon';
+        iconDiv.style.color = color;
+        const haIcon = document.createElement('ha-icon');
+        haIcon.setAttribute('icon', item.icon);
+        iconDiv.appendChild(haIcon);
+        itemEl.appendChild(iconDiv);
+      }
+
+      if (item.show_name !== false && item.name) {
+        const nameDiv = document.createElement('div');
+        nameDiv.className = 'left-status-name';
+        nameDiv.textContent = item.name;
+        itemEl.appendChild(nameDiv);
+      }
+
+      container.appendChild(itemEl);
+    });
+
+    return container;
+  }
+
+  // --- Manual Feed Tab ---
+
+  _renderManualFeedTab() {
+    const container = document.createElement('div');
+    container.className = 'tab-content-manual-feed';
+
+    const cfg = this._config.tabs_config?.manual_feed || {};
+
+    // Quick feed buttons
+    if (cfg.quick_feeds && cfg.quick_feeds.length > 0) {
+      const quickSection = document.createElement('div');
+      quickSection.style.marginBottom = '16px';
+
+      const quickTitle = document.createElement('div');
+      quickTitle.className = 'tab-section-title';
+      quickTitle.textContent = 'Quick Feed';
+      quickSection.appendChild(quickTitle);
+
+      const buttonsContainer = document.createElement('div');
+      buttonsContainer.className = 'quick-feed-buttons';
+
+      cfg.quick_feeds.forEach(feed => {
+        const btn = document.createElement('button');
+        btn.className = 'quick-feed-btn';
+        btn.innerHTML = `<div class="feed-btn-label">${feed.name || 'Feed'}</div><div class="feed-btn-doses">${feed.doses} doses</div>`;
+        btn.addEventListener('click', () => this._feedNow(feed.doses));
+        buttonsContainer.appendChild(btn);
+      });
+
+      quickSection.appendChild(buttonsContainer);
+      container.appendChild(quickSection);
+    }
+
+    // Custom feed
+    const customSection = document.createElement('div');
+    const customTitle = document.createElement('div');
+    customTitle.className = 'tab-section-title';
+    customTitle.textContent = 'Custom Feed';
+    customSection.appendChild(customTitle);
+
+    const customRow = document.createElement('div');
+    customRow.className = 'custom-feed-row';
+
+    const dosenInput = document.createElement('input');
+    dosenInput.type = 'number';
+    dosenInput.className = 'custom-doses-input';
+    dosenInput.min = '1';
+    dosenInput.max = '10';
+    dosenInput.value = '1';
+    dosenInput.placeholder = 'Doses';
+
+    const customBtn = document.createElement('button');
+    customBtn.className = 'custom-feed-btn';
+    customBtn.textContent = 'Feed';
+    customBtn.addEventListener('click', () => {
+      const doses = parseInt(dosenInput.value, 10) || 1;
+      this._feedNow(doses);
+    });
+
+    customRow.appendChild(dosenInput);
+    customRow.appendChild(customBtn);
+    customSection.appendChild(customRow);
+    container.appendChild(customSection);
+
+    return container;
+  }
+
+  _feedNow(doses) {
+    if (!this._hass) return;
+    // This will trigger a custom event or call a service
+    // For now, we'll just log it - user can configure via settings
+    console.log(`Feed ${doses} doses`);
+  }
+
+  // --- Stats Tab ---
+
+  _renderStatsTab() {
+    const container = document.createElement('div');
+    container.className = 'tab-content-stats';
+
+    const stats = this._config.tabs_config?.stats || [];
+
+    if (stats.length === 0) {
+      const empty = document.createElement('div');
+      empty.style.cssText = 'text-align:center;color:#999;font-size:13px;padding:16px';
+      empty.textContent = 'No stats configured';
+      container.appendChild(empty);
+      return container;
+    }
+
+    stats.forEach(stat => {
+      if (!stat || !stat.entity) return;
+
+      const item = document.createElement('div');
+      item.className = 'stats-item';
+
+      if (stat.label) {
+        const label = document.createElement('div');
+        label.className = 'stats-label';
+        label.textContent = stat.label;
+        item.appendChild(label);
+      }
+
+      const value = document.createElement('div');
+      value.className = 'stats-value';
+
+      if (this._hass && this._hass.states[stat.entity]) {
+        const st = this._hass.states[stat.entity];
+        value.textContent = st.state + (stat.unit ? ' ' + stat.unit : '');
+      } else {
+        value.textContent = 'N/A';
+      }
+
+      item.appendChild(value);
+      container.appendChild(item);
+    });
+
+    return container;
+  }
+
+  // --- Settings Tab ---
+
+  _renderSettingsTab() {
+    const container = document.createElement('div');
+    container.className = 'tab-content-settings';
+
+    const settings = this._config.tabs_config?.settings || [];
+
+    if (settings.length === 0) {
+      const empty = document.createElement('div');
+      empty.style.cssText = 'text-align:center;color:#999;font-size:13px;padding:16px';
+      empty.textContent = 'No settings configured';
+      container.appendChild(empty);
+      return container;
+    }
+
+    settings.forEach(setting => {
+      if (!setting) return;
+
+      const item = document.createElement('div');
+      item.className = 'settings-item';
+
+      const label = document.createElement('div');
+      label.className = 'settings-label';
+      label.textContent = setting.name || 'Setting';
+      item.appendChild(label);
+
+      if (setting.type === 'switch' && setting.entity) {
+        const toggle = document.createElement('div');
+        toggle.className = 'toggle';
+
+        if (this._hass && this._hass.states[setting.entity]) {
+          const st = this._hass.states[setting.entity];
+          if (st.state === 'on') toggle.classList.add('on');
+        }
+
+        toggle.innerHTML = '<div class="toggle-thumb"></div>';
+        toggle.addEventListener('click', () => {
+          if (!this._hass) return;
+          const st = this._hass.states[setting.entity];
+          const newState = !st || st.state !== 'on' ? 'on' : 'off';
+          this._hass.callService('switch', newState === 'on' ? 'turn_on' : 'turn_off', {
+            entity_id: setting.entity
+          });
+        });
+
+        item.appendChild(toggle);
+      } else if (setting.type === 'button' && setting.service) {
+        const btn = document.createElement('button');
+        btn.className = 'settings-btn';
+        btn.textContent = setting.name || 'Button';
+        btn.addEventListener('click', () => {
+          if (!this._hass) return;
+          const [domain, service] = setting.service.split('.');
+          this._hass.callService(domain, service, setting.service_data || {});
+        });
+        item.appendChild(btn);
+      } else if (setting.type === 'sensor' && setting.entity) {
+        const value = document.createElement('div');
+        value.className = 'settings-value';
+
+        if (this._hass && this._hass.states[setting.entity]) {
+          const st = this._hass.states[setting.entity];
+          value.textContent = st.state;
+        } else {
+          value.textContent = 'N/A';
+        }
+
+        item.appendChild(value);
+      }
+
+      container.appendChild(item);
+    });
+
+    return container;
+  }
+
   // --- Main Render ---
 
   render() {
@@ -499,8 +788,16 @@ class PetfeederCard extends HTMLElement {
     const contentBg = this._hexToRgba(contentColor, contentOpacity);
 
     const style = `
-      :host{display:block;box-sizing:border-box;padding:0;max-width:420px;margin:0 auto;font-family:var(--paper-font-body1_-_font-family, Roboto, sans-serif)}
-      .card{border-radius:12px;overflow:hidden;background:var(--ha-card-background, #fff);box-shadow:var(--ha-card-box-shadow, 0 2px 6px rgba(0,0,0,0.1))}
+      :host{display:block;box-sizing:border-box;padding:0;max-width:800px;margin:0 auto;font-family:var(--paper-font-body1_-_font-family, Roboto, sans-serif)}
+      .card{border-radius:12px;overflow:hidden;background:var(--ha-card-background, #fff);box-shadow:var(--ha-card-box-shadow, 0 2px 6px rgba(0,0,0,0.1));display:flex;flex-direction:column}
+      .card-layout{display:flex;gap:0;min-height:450px}
+      .card-left{flex:0 0 100px;background:var(--secondary-background-color,#f5f5f5);padding:12px 8px;border-right:2px solid var(--divider-color,#e0e0e0);display:flex;flex-direction:column;gap:8px;overflow-y:auto}
+      .card-center{flex:1;padding:16px;background:${contentBg};display:flex;flex-direction:column;align-items:center}
+      .card-right{flex:0 0 200px;background:${contentBg};padding:0;border-left:2px solid var(--divider-color,#e0e0e0);display:flex;flex-direction:column}
+      .left-status-panel{display:flex;flex-direction:column;gap:8px}
+      .left-status-item{display:flex;flex-direction:column;align-items:center;gap:4px;padding:8px;background:var(--ha-card-background,#fff);border-radius:6px;border:1px solid var(--divider-color,#e0e0e0)}
+      .left-status-icon{font-size:28px;color:#888;display:flex;align-items:center;justify-content:center}
+      .left-status-name{font-size:10px;color:var(--secondary-text-color,#888);text-align:center;word-break:break-word;max-width:80px}
       .card-header{background:${headerBg};padding:20px 16px 16px;text-align:center;position:relative}
       .pet-name{font-size:16px;font-weight:500;color:var(--primary-text-color,#333);margin-bottom:4px;display:flex;align-items:center;justify-content:center;gap:8px}
       .pet-name img{width:28px;height:28px;border-radius:50%;object-fit:cover}
@@ -511,7 +808,8 @@ class PetfeederCard extends HTMLElement {
       .dial-label{font-size:12px;color:var(--secondary-text-color,#888);margin-top:4px}
       .next-schedule-row{margin-top:12px;font-size:13px;color:var(--secondary-text-color,#888);text-align:center}
       .card-content{background:${contentBg};padding:16px}
-      .schedule-section{padding:0}
+      .schedule-section{padding:0;display:none}
+      .schedule-section.active{display:block}
       .schedule-item{display:flex;align-items:center;gap:12px;padding:10px 8px;border-radius:8px;transition:background 0.15s}
       .schedule-item:hover{background:var(--secondary-background-color, rgba(0,0,0,.03))}
       .schedule-item.disabled{opacity:0.4}
@@ -520,6 +818,32 @@ class PetfeederCard extends HTMLElement {
       .timeline-line{position:absolute;top:16px;bottom:-10px;left:50%;width:2px;background:var(--divider-color, #ddd);transform:translateX(-50%)}
       .schedule-time{font-size:16px;font-weight:500;color:var(--primary-text-color,#333);min-width:54px}
       .schedule-doses{font-size:13px;color:var(--secondary-text-color,#888);flex:1;text-align:right}
+      .tabs-container{display:flex;flex-direction:column;height:100%}
+      .tabs-header{display:flex;border-bottom:2px solid var(--divider-color,#e0e0e0);background:var(--ha-card-background,#fff)}
+      .tab-btn{flex:1;padding:12px 8px;border:none;background:transparent;color:var(--secondary-text-color,#888);font-size:11px;font-weight:500;cursor:pointer;transition:all 0.2s;border-bottom:3px solid transparent;text-align:center;white-space:nowrap}
+      .tab-btn:hover{background:var(--secondary-background-color,#f5f5f5)}
+      .tab-btn.active{color:${accentColor};border-bottom-color:${accentColor};background:transparent}
+      .tabs-content{flex:1;overflow-y:auto;padding:12px 8px}
+      .tab-content-manual-feed,.tab-content-stats,.tab-content-settings{display:none}
+      .tab-content-manual-feed.active,.tab-content-stats.active,.tab-content-settings.active{display:block}
+      .tab-section-title{font-size:12px;font-weight:600;color:var(--primary-text-color,#333);text-transform:uppercase;margin-bottom:8px;letter-spacing:0.5px}
+      .quick-feed-buttons{display:flex;flex-direction:column;gap:6px;margin-bottom:12px}
+      .quick-feed-btn{padding:10px;border:1px solid var(--divider-color,#e0e0e0);background:var(--ha-card-background,#fff);border-radius:6px;cursor:pointer;transition:all 0.2s;font-size:12px;text-align:center}
+      .quick-feed-btn:hover{background:var(--secondary-background-color,#f5f5f5);border-color:${accentColor}}
+      .feed-btn-label{font-weight:500;color:var(--primary-text-color,#333)}
+      .feed-btn-doses{font-size:10px;color:var(--secondary-text-color,#888)}
+      .custom-feed-row{display:flex;gap:6px;margin-bottom:12px}
+      .custom-doses-input{flex:1;padding:8px 6px;border:1px solid var(--divider-color,#e0e0e0);border-radius:4px;font-size:12px;text-align:center;background:var(--ha-card-background,#fff)}
+      .custom-feed-btn{flex:1;padding:8px 6px;border:none;background:${accentColor};color:#fff;border-radius:4px;cursor:pointer;font-size:12px;font-weight:500;transition:opacity 0.2s}
+      .custom-feed-btn:hover{opacity:0.85}
+      .stats-item{padding:8px;background:var(--ha-card-background,#fff);border:1px solid var(--divider-color,#e0e0e0);border-radius:6px;margin-bottom:6px}
+      .stats-label{font-size:10px;color:var(--secondary-text-color,#888);margin-bottom:2px}
+      .stats-value{font-size:14px;font-weight:500;color:var(--primary-text-color,#333)}
+      .settings-item{padding:10px;background:var(--ha-card-background,#fff);border:1px solid var(--divider-color,#e0e0e0);border-radius:6px;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center}
+      .settings-label{font-size:12px;color:var(--primary-text-color,#333);font-weight:500;flex:1}
+      .settings-value{font-size:12px;color:var(--secondary-text-color,#888)}
+      .settings-btn{padding:6px 10px;border:1px solid var(--divider-color,#e0e0e0);background:var(--ha-card-background,#fff);color:var(--primary-text-color,#333);border-radius:4px;font-size:11px;cursor:pointer;transition:all 0.2s}
+      .settings-btn:hover{background:var(--secondary-background-color,#f5f5f5);border-color:${accentColor}}
       .status-bar{display:flex;justify-content:space-around;padding:12px 8px;border-top:1px solid var(--divider-color,#eee);background:var(--ha-card-background,#fff)}
       .status-row{display:flex;justify-content:space-around;width:100%}
       .status-item{display:flex;flex-direction:column;align-items:center;gap:4px;min-width:60px}
@@ -551,7 +875,7 @@ class PetfeederCard extends HTMLElement {
     wrap.className = 'card';
     wrap.style.position = 'relative';
 
-    // --- Header: pet name + dial ---
+    // --- Header Section ---
     const header = document.createElement('div');
     header.className = 'card-header';
 
@@ -587,11 +911,100 @@ class PetfeederCard extends HTMLElement {
     header.appendChild(nextRow);
     wrap.appendChild(header);
 
-    // --- Content: schedule timeline ---
-    const content = document.createElement('div');
-    content.className = 'card-content';
-    content.appendChild(this._renderScheduleTimeline());
-    wrap.appendChild(content);
+    // --- Main Content Layout (left | center | right) ---
+    if (this._config.tabs_config?.show_tabs) {
+      const layout = document.createElement('div');
+      layout.className = 'card-layout';
+
+      // --- Left Panel: Status ---
+      const leftPanel = document.createElement('div');
+      leftPanel.className = 'card-left';
+      leftPanel.appendChild(this._renderLeftStatus());
+      layout.appendChild(leftPanel);
+
+      // --- Center: Dial and Schedules ---
+      const centerPanel = document.createElement('div');
+      centerPanel.className = 'card-center';
+
+      // Schedule timeline
+      const scheduleSection = document.createElement('div');
+      scheduleSection.className = 'schedule-section' + (this._activeTab === 'schedules' ? ' active' : '');
+      scheduleSection.appendChild(this._renderScheduleTimeline());
+      centerPanel.appendChild(scheduleSection);
+
+      layout.appendChild(centerPanel);
+
+      // --- Right Panel: Tabs ---
+      const rightPanel = document.createElement('div');
+      rightPanel.className = 'card-right';
+
+      const tabsContainer = document.createElement('div');
+      tabsContainer.className = 'tabs-container';
+
+      // Tab headers
+      const tabsHeader = document.createElement('div');
+      tabsHeader.className = 'tabs-header';
+
+      const tabs = [
+        { key: 'schedules', label: this._config.tabs_config.schedules_label || 'Schedules' },
+        { key: 'manual_feed', label: this._config.tabs_config.manual_feed_label || 'Manual Feed' },
+        { key: 'stats', label: this._config.tabs_config.stats_label || 'Stats' },
+        { key: 'settings', label: this._config.tabs_config.settings_label || 'Settings' }
+      ];
+
+      tabs.forEach(tab => {
+        const tabBtn = document.createElement('button');
+        tabBtn.className = 'tab-btn' + (this._activeTab === tab.key ? ' active' : '');
+        tabBtn.textContent = tab.label;
+        tabBtn.addEventListener('click', () => {
+          this._activeTab = tab.key;
+          this.render();
+        });
+        tabsHeader.appendChild(tabBtn);
+      });
+
+      tabsContainer.appendChild(tabsHeader);
+
+      // Tab content
+      const tabsContent = document.createElement('div');
+      tabsContent.className = 'tabs-content';
+
+      // Schedules tab content
+      const schedTab = document.createElement('div');
+      schedTab.className = 'schedule-section' + (this._activeTab === 'schedules' ? ' active' : '');
+      schedTab.appendChild(this._renderScheduleTimeline());
+      tabsContent.appendChild(schedTab);
+
+      // Manual Feed tab
+      const manualFeedTab = document.createElement('div');
+      manualFeedTab.className = 'tab-content-manual-feed' + (this._activeTab === 'manual_feed' ? ' active' : '');
+      manualFeedTab.appendChild(this._renderManualFeedTab());
+      tabsContent.appendChild(manualFeedTab);
+
+      // Stats tab
+      const statsTab = document.createElement('div');
+      statsTab.className = 'tab-content-stats' + (this._activeTab === 'stats' ? ' active' : '');
+      statsTab.appendChild(this._renderStatsTab());
+      tabsContent.appendChild(statsTab);
+
+      // Settings tab
+      const settingsTab = document.createElement('div');
+      settingsTab.className = 'tab-content-settings' + (this._activeTab === 'settings' ? ' active' : '');
+      settingsTab.appendChild(this._renderSettingsTab());
+      tabsContent.appendChild(settingsTab);
+
+      tabsContainer.appendChild(tabsContent);
+      rightPanel.appendChild(tabsContainer);
+      layout.appendChild(rightPanel);
+
+      wrap.appendChild(layout);
+    } else {
+      // --- Default layout (no tabs) ---
+      const content = document.createElement('div');
+      content.className = 'card-content';
+      content.appendChild(this._renderScheduleTimeline());
+      wrap.appendChild(content);
+    }
 
     // --- Status bar (bottom) ---
     const hasStatus = (this._config.status || []).some(s => s && (s.icon || s.name));
@@ -996,6 +1409,178 @@ class PetfeederCardEditor extends HTMLElement {
       }
     }));
 
+    // === LEFT STATUS SECTION ===
+    editor.appendChild(this._buildSection('Left Status Panel', false, (body) => {
+      // Ensure left_status exists
+      if (!this._config.left_status) this._config.left_status = [];
+      
+      const addLeftStatusBtn = document.createElement('button');
+      addLeftStatusBtn.className = 'pf-btn pf-btn-primary pf-btn-sm';
+      addLeftStatusBtn.textContent = '+ Add Status Item';
+      addLeftStatusBtn.style.marginBottom = '12px';
+      addLeftStatusBtn.addEventListener('click', () => {
+        if (!this._config.left_status) this._config.left_status = [];
+        this._config.left_status.push({
+          entity: '',
+          name: '',
+          icon: '',
+          show_name: true,
+          show_icon: true,
+          color_map: []
+        });
+        this._dispatch();
+        this._render();
+      });
+      body.appendChild(addLeftStatusBtn);
+
+      if (this._config.left_status && this._config.left_status.length > 0) {
+        this._config.left_status.forEach((item, idx) => {
+          if (!item) return;
+
+          const card = document.createElement('div');
+          card.className = 'pf-status-card';
+
+          const title = document.createElement('div');
+          title.className = 'pf-status-title';
+          title.textContent = `Status Item ${idx + 1}`;
+          card.appendChild(title);
+
+          // Entity picker
+          card.appendChild(this._buildHaEntityPicker('Entity', item.entity || '', v => {
+            this._config.left_status[idx].entity = v || null;
+            this._dispatch();
+          }));
+
+          // Name
+          card.appendChild(this._buildTextField('Name', item.name || '', 'e.g., Lid', v => {
+            this._config.left_status[idx].name = v || null;
+            this._dispatch();
+          }));
+
+          // Icon picker
+          card.appendChild(this._buildHaIconPicker('Icon', item.icon || '', v => {
+            this._config.left_status[idx].icon = v || null;
+            this._dispatch();
+          }));
+
+          // Show Name toggle
+          const showNameRow = document.createElement('div');
+          showNameRow.className = 'popup-row';
+          showNameRow.style.cssText = 'margin-bottom:8px';
+          const showNameLabel = document.createElement('label');
+          showNameLabel.className = 'pf-field-label';
+          showNameLabel.textContent = 'Show Name';
+          showNameLabel.style.cssText = 'margin:0';
+          const showNameToggle = document.createElement('div');
+          showNameToggle.className = 'toggle' + (item.show_name !== false ? ' on' : '');
+          showNameToggle.innerHTML = '<div class="toggle-thumb"></div>';
+          showNameToggle.addEventListener('click', () => {
+            this._config.left_status[idx].show_name = !this._config.left_status[idx].show_name;
+            showNameToggle.classList.toggle('on');
+            this._dispatch();
+          });
+          showNameRow.appendChild(showNameLabel);
+          showNameRow.appendChild(showNameToggle);
+          card.appendChild(showNameRow);
+
+          // Show Icon toggle
+          const showIconRow = document.createElement('div');
+          showIconRow.className = 'popup-row';
+          showIconRow.style.cssText = 'margin-bottom:12px';
+          const showIconLabel = document.createElement('label');
+          showIconLabel.className = 'pf-field-label';
+          showIconLabel.textContent = 'Show Icon';
+          showIconLabel.style.cssText = 'margin:0';
+          const showIconToggle = document.createElement('div');
+          showIconToggle.className = 'toggle' + (item.show_icon !== false ? ' on' : '');
+          showIconToggle.innerHTML = '<div class="toggle-thumb"></div>';
+          showIconToggle.addEventListener('click', () => {
+            this._config.left_status[idx].show_icon = !this._config.left_status[idx].show_icon;
+            showIconToggle.classList.toggle('on');
+            this._dispatch();
+          });
+          showIconRow.appendChild(showIconLabel);
+          showIconRow.appendChild(showIconToggle);
+          card.appendChild(showIconRow);
+
+          // Color mapping
+          card.appendChild(this._buildColorMapping(idx, true));
+
+          // Remove button
+          const removeBtn = document.createElement('button');
+          removeBtn.className = 'pf-btn pf-btn-danger pf-btn-sm';
+          removeBtn.textContent = 'Remove This Item';
+          removeBtn.style.marginTop = '8px';
+          removeBtn.addEventListener('click', () => {
+            this._config.left_status.splice(idx, 1);
+            this._dispatch();
+            this._render();
+          });
+          card.appendChild(removeBtn);
+
+          body.appendChild(card);
+        });
+      }
+    }));
+
+    // === TABS CONFIGURATION SECTION ===
+    editor.appendChild(this._buildSection('Tabs', false, (body) => {
+      // Show tabs toggle
+      const showTabsRow = document.createElement('div');
+      showTabsRow.className = 'popup-row';
+      showTabsRow.style.cssText = 'margin-bottom:16px';
+      const showTabsLabel = document.createElement('label');
+      showTabsLabel.className = 'pf-field-label';
+      showTabsLabel.textContent = 'Show Tabs';
+      showTabsLabel.style.cssText = 'margin:0';
+      
+      // Ensure tabs_config exists
+      if (!this._config.tabs_config) this._config.tabs_config = {};
+      if (!this._config.tabs_config.manual_feed) this._config.tabs_config.manual_feed = {};
+      if (!this._config.tabs_config.stats) this._config.tabs_config.stats = [];
+      if (!this._config.tabs_config.settings) this._config.tabs_config.settings = [];
+      
+      const showTabsToggle = document.createElement('div');
+      showTabsToggle.className = 'toggle' + (this._config.tabs_config?.show_tabs ? ' on' : '');
+      showTabsToggle.innerHTML = '<div class="toggle-thumb"></div>';
+      showTabsToggle.addEventListener('click', () => {
+        this._config.tabs_config.show_tabs = !this._config.tabs_config.show_tabs;
+        showTabsToggle.classList.toggle('on');
+        this._dispatch();
+      });
+      showTabsRow.appendChild(showTabsLabel);
+      showTabsRow.appendChild(showTabsToggle);
+      body.appendChild(showTabsRow);
+
+      const cfg = this._config.tabs_config || {};
+
+      // Tab labels
+      body.appendChild(this._buildTextField('Schedules Label', cfg.schedules_label || 'Schedules', '', v => {
+        this._config.tabs_config.schedules_label = v;
+        this._dispatch();
+      }));
+
+      body.appendChild(this._buildTextField('Manual Feed Label', cfg.manual_feed_label || 'Manual Feed', '', v => {
+        this._config.tabs_config.manual_feed_label = v;
+        this._dispatch();
+      }));
+
+      body.appendChild(this._buildTextField('Stats Label', cfg.stats_label || 'Stats', '', v => {
+        this._config.tabs_config.stats_label = v;
+        this._dispatch();
+      }));
+
+      body.appendChild(this._buildTextField('Settings Label', cfg.settings_label || 'Settings', '', v => {
+        this._config.tabs_config.settings_label = v;
+        this._dispatch();
+      }));
+
+      // Subsections for each tab configuration
+      body.appendChild(this._buildTabSubsection('Manual Feed', 'manual_feed'));
+      body.appendChild(this._buildTabSubsection('Stats', 'stats'));
+      body.appendChild(this._buildTabSubsection('Settings', 'settings'));
+    }));
+
     // === VISUALS SECTION ===
     editor.appendChild(this._buildSection('Visuals', false, (body) => {
       // Header Color
@@ -1125,8 +1710,9 @@ class PetfeederCardEditor extends HTMLElement {
     return field;
   }
 
-  _buildColorMapping(statusIdx) {
-    const s = this._config.status[statusIdx];
+  _buildColorMapping(statusIdx, isLeftStatus = false) {
+    const arr = isLeftStatus ? this._config.left_status : this._config.status;
+    const s = arr[statusIdx];
     if (!s.color_map || !Array.isArray(s.color_map)) s.color_map = [];
 
     const container = document.createElement('div');
@@ -1149,7 +1735,7 @@ class PetfeederCardEditor extends HTMLElement {
       stateInput.value = mapping.state || '';
       stateInput.placeholder = 'State (e.g. on, off, home)';
       stateInput.addEventListener('change', e => {
-        this._config.status[statusIdx].color_map[idx].state = e.target.value;
+        arr[statusIdx].color_map[idx].state = e.target.value;
         this._dispatch();
       });
       stateDiv.appendChild(stateInput);
@@ -1159,7 +1745,7 @@ class PetfeederCardEditor extends HTMLElement {
       colorInput.className = 'pf-color-input';
       colorInput.value = mapping.color || '#888888';
       colorInput.addEventListener('input', e => {
-        this._config.status[statusIdx].color_map[idx].color = e.target.value;
+        arr[statusIdx].color_map[idx].color = e.target.value;
         this._dispatch();
       });
 
@@ -1168,7 +1754,7 @@ class PetfeederCardEditor extends HTMLElement {
       removeBtn.textContent = '✕';
       removeBtn.title = 'Remove mapping';
       removeBtn.addEventListener('click', () => {
-        this._config.status[statusIdx].color_map.splice(idx, 1);
+        arr[statusIdx].color_map.splice(idx, 1);
         this._dispatch();
         this._render();
       });
@@ -1185,13 +1771,243 @@ class PetfeederCardEditor extends HTMLElement {
     addBtn.textContent = '+ Add State';
     addBtn.style.marginTop = '4px';
     addBtn.addEventListener('click', () => {
-      this._config.status[statusIdx].color_map.push({ state: '', color: '#4caf50' });
+      arr[statusIdx].color_map.push({ state: '', color: '#4caf50' });
       this._dispatch();
       this._render();
     });
     container.appendChild(addBtn);
 
     return container;
+  }
+
+  _buildTabSubsection(name, tabKey) {
+    const section = document.createElement('div');
+    section.style.cssText = 'border:1px solid var(--divider-color,#e0e0e0);border-radius:6px;padding:12px;margin-top:12px;background:var(--secondary-background-color,#f5f5f5)';
+
+    const header = document.createElement('div');
+    header.style.cssText = 'font-size:13px;font-weight:500;color:var(--primary-text-color,#333);margin-bottom:12px;cursor:pointer;display:flex;justify-content:space-between;align-items:center';
+    header.textContent = name;
+    const arrow = document.createElement('span');
+    arrow.textContent = '▼';
+    arrow.style.cssText = 'transition:transform 0.2s';
+    header.appendChild(arrow);
+
+    const content = document.createElement('div');
+    content.style.cssText = 'display:block';
+    content.style.display = 'none';
+
+    header.addEventListener('click', () => {
+      const isOpen = content.style.display !== 'none';
+      content.style.display = isOpen ? 'none' : 'block';
+      arrow.style.transform = isOpen ? '' : 'rotate(180deg)';
+    });
+
+    if (tabKey === 'manual_feed') {
+      // Ensure manual_feed structure exists
+      if (!this._config.tabs_config.manual_feed) this._config.tabs_config.manual_feed = {};
+      if (!this._config.tabs_config.manual_feed.quick_feeds) this._config.tabs_config.manual_feed.quick_feeds = [];
+      
+      const cfg = this._config.tabs_config?.manual_feed || {};
+
+      // Quick feeds section
+      const quickTitle = document.createElement('div');
+      quickTitle.style.cssText = 'font-size:12px;font-weight:600;color:var(--primary-text-color,#333);margin-bottom:8px;text-transform:uppercase';
+      quickTitle.textContent = 'Quick Feeds';
+      content.appendChild(quickTitle);
+
+      const addQuickBtn = document.createElement('button');
+      addQuickBtn.className = 'pf-btn pf-btn-primary pf-btn-sm';
+      addQuickBtn.textContent = '+ Add Quick Feed';
+      addQuickBtn.style.marginBottom = '8px';
+      addQuickBtn.addEventListener('click', () => {
+        if (!this._config.tabs_config.manual_feed) this._config.tabs_config.manual_feed = {};
+        if (!this._config.tabs_config.manual_feed.quick_feeds) this._config.tabs_config.manual_feed.quick_feeds = [];
+        this._config.tabs_config.manual_feed.quick_feeds.push({ name: 'Quick Feed', doses: 1 });
+        this._dispatch();
+        this._render();
+      });
+      content.appendChild(addQuickBtn);
+
+      if (cfg.quick_feeds && cfg.quick_feeds.length > 0) {
+        cfg.quick_feeds.forEach((feed, idx) => {
+          const feedRow = document.createElement('div');
+          feedRow.style.cssText = 'display:flex;gap:6px;margin-bottom:6px';
+
+          const nameInput = document.createElement('input');
+          nameInput.type = 'text';
+          nameInput.className = 'pf-text-input';
+          nameInput.value = feed.name || '';
+          nameInput.placeholder = 'Name';
+          nameInput.style.flex = '1';
+          nameInput.addEventListener('change', e => {
+            this._config.tabs_config.manual_feed.quick_feeds[idx].name = e.target.value;
+            this._dispatch();
+          });
+
+          const dosesInput = document.createElement('input');
+          dosesInput.type = 'number';
+          dosesInput.className = 'pf-text-input';
+          dosesInput.value = feed.doses || 1;
+          dosesInput.min = '1';
+          dosesInput.style.width = '70px';
+          dosesInput.placeholder = 'Doses';
+          dosesInput.addEventListener('change', e => {
+            this._config.tabs_config.manual_feed.quick_feeds[idx].doses = parseInt(e.target.value, 10) || 1;
+            this._dispatch();
+          });
+
+          const removeBtn = document.createElement('button');
+          removeBtn.className = 'pf-btn pf-btn-danger pf-btn-sm';
+          removeBtn.textContent = '✕';
+          removeBtn.addEventListener('click', () => {
+            this._config.tabs_config.manual_feed.quick_feeds.splice(idx, 1);
+            this._dispatch();
+            this._render();
+          });
+
+          feedRow.appendChild(nameInput);
+          feedRow.appendChild(dosesInput);
+          feedRow.appendChild(removeBtn);
+          content.appendChild(feedRow);
+        });
+      }
+
+      // Custom feed config
+      const customTitle = document.createElement('div');
+      customTitle.style.cssText = 'font-size:12px;font-weight:600;color:var(--primary-text-color,#333);margin:12px 0 8px;text-transform:uppercase';
+      customTitle.textContent = 'Custom Feed Settings';
+      content.appendChild(customTitle);
+
+      content.appendChild(this._buildHaEntityPicker('Custom Doses Input Entity', cfg.custom_doses_entity || '', v => {
+        this._config.tabs_config.manual_feed.custom_doses_entity = v || null;
+        this._dispatch();
+      }));
+
+      content.appendChild(this._buildHaEntityPicker('Feed Button Service', cfg.feed_button_entity || '', v => {
+        this._config.tabs_config.manual_feed.feed_button_entity = v || null;
+        this._dispatch();
+      }));
+    } else if (tabKey === 'stats') {
+      const stats = this._config.tabs_config?.stats || [];
+
+      const addStatBtn = document.createElement('button');
+      addStatBtn.className = 'pf-btn pf-btn-primary pf-btn-sm';
+      addStatBtn.textContent = '+ Add Stat';
+      addStatBtn.style.marginBottom = '8px';
+      addStatBtn.addEventListener('click', () => {
+        if (!this._config.tabs_config.stats) this._config.tabs_config.stats = [];
+        this._config.tabs_config.stats.push({ entity: '', label: '', unit: '' });
+        this._dispatch();
+        this._render();
+      });
+      content.appendChild(addStatBtn);
+
+      stats.forEach((stat, idx) => {
+        const card = document.createElement('div');
+        card.className = 'pf-status-card';
+
+        content.appendChild(this._buildHaEntityPicker('Entity', stat.entity || '', v => {
+          this._config.tabs_config.stats[idx].entity = v || null;
+          this._dispatch();
+        }));
+
+        content.appendChild(this._buildTextField('Label', stat.label || '', 'Stat name', v => {
+          this._config.tabs_config.stats[idx].label = v || null;
+          this._dispatch();
+        }));
+
+        content.appendChild(this._buildTextField('Unit', stat.unit || '', 'e.g., g, %', v => {
+          this._config.tabs_config.stats[idx].unit = v || null;
+          this._dispatch();
+        }));
+
+        const removeBtn = document.createElement('button');
+        removeBtn.className = 'pf-btn pf-btn-danger pf-btn-sm';
+        removeBtn.textContent = 'Remove';
+        removeBtn.style.marginTop = '8px';
+        removeBtn.addEventListener('click', () => {
+          this._config.tabs_config.stats.splice(idx, 1);
+          this._dispatch();
+          this._render();
+        });
+        content.appendChild(removeBtn);
+      });
+    } else if (tabKey === 'settings') {
+      const settings = this._config.tabs_config?.settings || [];
+
+      const addSettingBtn = document.createElement('button');
+      addSettingBtn.className = 'pf-btn pf-btn-primary pf-btn-sm';
+      addSettingBtn.textContent = '+ Add Setting';
+      addSettingBtn.style.marginBottom = '8px';
+      addSettingBtn.addEventListener('click', () => {
+        if (!this._config.tabs_config.settings) this._config.tabs_config.settings = [];
+        this._config.tabs_config.settings.push({ name: '', type: 'sensor', entity: '', service: '', service_data: {} });
+        this._dispatch();
+        this._render();
+      });
+      content.appendChild(addSettingBtn);
+
+      settings.forEach((setting, idx) => {
+        const card = document.createElement('div');
+        card.className = 'pf-status-card';
+
+        content.appendChild(this._buildTextField('Name', setting.name || '', 'Setting name', v => {
+          this._config.tabs_config.settings[idx].name = v || null;
+          this._dispatch();
+        }));
+
+        const typeField = document.createElement('div');
+        typeField.className = 'pf-field';
+        const typeLabel = document.createElement('label');
+        typeLabel.className = 'pf-field-label';
+        typeLabel.textContent = 'Type';
+        const typeSel = document.createElement('select');
+        typeSel.className = 'pf-select';
+        ['sensor', 'switch', 'button'].forEach(t => {
+          const opt = document.createElement('option');
+          opt.value = t;
+          opt.textContent = t.charAt(0).toUpperCase() + t.slice(1);
+          typeSel.appendChild(opt);
+        });
+        typeSel.value = setting.type || 'sensor';
+        typeSel.addEventListener('change', e => {
+          this._config.tabs_config.settings[idx].type = e.target.value;
+          this._dispatch();
+          this._render();
+        });
+        typeField.appendChild(typeLabel);
+        typeField.appendChild(typeSel);
+        content.appendChild(typeField);
+
+        if (setting.type === 'button') {
+          content.appendChild(this._buildTextField('Service', setting.service || '', 'e.g., switch.turn_on', v => {
+            this._config.tabs_config.settings[idx].service = v || null;
+            this._dispatch();
+          }));
+        } else {
+          content.appendChild(this._buildHaEntityPicker('Entity', setting.entity || '', v => {
+            this._config.tabs_config.settings[idx].entity = v || null;
+            this._dispatch();
+          }));
+        }
+
+        const removeBtn = document.createElement('button');
+        removeBtn.className = 'pf-btn pf-btn-danger pf-btn-sm';
+        removeBtn.textContent = 'Remove';
+        removeBtn.style.marginTop = '8px';
+        removeBtn.addEventListener('click', () => {
+          this._config.tabs_config.settings.splice(idx, 1);
+          this._dispatch();
+          this._render();
+        });
+        content.appendChild(removeBtn);
+      });
+    }
+
+    section.appendChild(header);
+    section.appendChild(content);
+
+    return section;
   }
 
   _buildColorInput(label, value, onChange) {
