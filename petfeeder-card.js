@@ -534,7 +534,7 @@ class PetfeederCard extends HTMLElement {
     const statusDiv = document.createElement('div');
     statusDiv.className = 'compact-status';
 
-    (this._config.compact_status || []).slice(0, 3).forEach(item => {
+    (this._config.compact_status || []).forEach(item => {
       if (!item || (!item.entity && !item.name)) return;
 
       const statusItem = document.createElement('div');
