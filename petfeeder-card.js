@@ -737,28 +737,27 @@ class PetfeederCard extends HTMLElement {
     const style = `
       :host{display:block;box-sizing:border-box;padding:0;max-width:800px;margin:0 auto;font-family:var(--paper-font-body1_-_font-family, Roboto, sans-serif)}
       .card{border-radius:12px;overflow:hidden;background:var(--ha-card-background, #fff);box-shadow:var(--ha-card-box-shadow, 0 2px 6px rgba(0,0,0,0.1));display:flex;flex-direction:column}
-      .card-layout{display:flex;gap:0;min-height:350px}
-      .card-left{flex:0 0 100px;background:var(--secondary-background-color,#f5f5f5);padding:12px 8px;border-right:2px solid var(--divider-color,#e0e0e0);display:flex;flex-direction:column;gap:8px;overflow-y:auto}
-      .card-center{flex:1;padding:16px;background:${contentBg};display:flex;flex-direction:column;align-items:center}
-      .left-status-panel{display:flex;flex-direction:column;gap:8px}
-      .left-status-item{display:flex;flex-direction:column;align-items:center;gap:4px;padding:8px;background:var(--ha-card-background,#fff);border-radius:6px;border:1px solid var(--divider-color,#e0e0e0)}
+      .card-header{background:${headerBg};padding:20px 16px 0;text-align:center;position:relative}
+      .pet-name{font-size:16px;font-weight:500;color:var(--primary-text-color,#333);display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:4px}
+      .pet-name img{width:28px;height:28px;border-radius:50%;object-fit:cover}
+      .sub-label{font-size:12px;color:var(--secondary-text-color,#888);margin-bottom:16px}
+      .header-main{display:flex;align-items:center;justify-content:center;gap:0;padding:0 8px}
+      .header-left{flex:0 0 100px;display:flex;flex-direction:column;gap:8px;align-items:center;padding:8px 4px}
+      .header-center{flex:1;display:flex;flex-direction:column;align-items:center;padding:0 12px}
+      .header-right{flex:0 0 120px;display:flex;flex-direction:column;gap:4px;align-items:stretch;padding:8px 4px}
+      .left-status-panel{display:flex;flex-direction:column;gap:8px;width:100%}
+      .left-status-item{display:flex;flex-direction:column;align-items:center;gap:4px;padding:8px;background:var(--secondary-background-color,#f5f5f5);border-radius:6px;border:1px solid var(--divider-color,#e0e0e0)}
       .left-status-icon{font-size:28px;color:#888;display:flex;align-items:center;justify-content:center}
       .left-status-name{font-size:10px;color:var(--secondary-text-color,#888);text-align:center;word-break:break-word;max-width:80px}
-      .card-header{background:${headerBg};padding:20px 16px 16px;text-align:center;position:relative}
-      .header-top{display:flex;flex-direction:column;align-items:center;gap:8px;margin-bottom:16px}
-      .pet-name{font-size:16px;font-weight:500;color:var(--primary-text-color,#333);display:flex;align-items:center;justify-content:center;gap:8px}
-      .pet-name img{width:28px;height:28px;border-radius:50%;object-fit:cover}
-      .sub-label{font-size:12px;color:var(--secondary-text-color,#888)}
       .dial-container{position:relative;width:200px;height:200px;margin:0 auto}
       .dial-center{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center}
       .dial-grams{font-size:48px;font-weight:300;color:var(--primary-text-color,#333);line-height:1}
       .dial-label{font-size:12px;color:var(--secondary-text-color,#888);margin-top:4px}
-      .next-schedule-row{margin-top:8px;font-size:13px;color:var(--secondary-text-color,#888);text-align:center}
-      .header-tabs{display:flex;border-bottom:2px solid var(--divider-color,#e0e0e0);background:var(--ha-card-background,#fff);margin-top:16px;margin-left:-16px;margin-right:-16px;padding:0 16px}
-      .tab-btn{flex:1;padding:12px 8px;border:none;background:transparent;color:var(--secondary-text-color,#888);font-size:11px;font-weight:500;cursor:pointer;transition:all 0.2s;border-bottom:3px solid transparent;text-align:center;white-space:nowrap}
-      .tab-btn:hover{background:var(--secondary-background-color,#f5f5f5)}
-      .tab-btn.active{color:${accentColor};border-bottom-color:${accentColor};background:transparent}
-      .tab-content-area{background:${contentBg};padding:16px;border-top:2px solid var(--divider-color,#e0e0e0)}
+      .next-schedule-row{margin-top:8px;margin-bottom:12px;font-size:13px;color:var(--secondary-text-color,#888);text-align:center}
+      .tab-btn{width:100%;padding:10px 8px;border:none;background:var(--secondary-background-color,#f5f5f5);color:var(--secondary-text-color,#888);font-size:11px;font-weight:500;cursor:pointer;transition:all 0.2s;border-radius:6px;text-align:center;white-space:nowrap;border:1px solid var(--divider-color,#e0e0e0)}
+      .tab-btn:hover{background:var(--ha-card-background,#fff);border-color:${accentColor}}
+      .tab-btn.active{color:${accentColor};background:var(--ha-card-background,#fff);border-color:${accentColor};font-weight:600}
+      .tab-content-area{background:${contentBg};padding:16px;border-top:1px solid var(--divider-color,#e0e0e0);min-height:60px}
       .schedule-section{display:none}
       .schedule-section.active{display:block}
       .schedule-item{display:flex;align-items:center;gap:12px;padding:10px 8px;border-radius:8px;transition:background 0.15s}
@@ -819,10 +818,7 @@ class PetfeederCard extends HTMLElement {
     const header = document.createElement('div');
     header.className = 'card-header';
 
-    // Header top (title, subtitle, dial, next schedule)
-    const headerTop = document.createElement('div');
-    headerTop.className = 'header-top';
-
+    // Title
     const petName = document.createElement('div');
     petName.className = 'pet-name';
     if (this._config.image) {
@@ -836,14 +832,28 @@ class PetfeederCard extends HTMLElement {
       nameSpan.textContent = this._config.main_title || 'My Feeder';
       petName.appendChild(nameSpan);
     }
-    headerTop.appendChild(petName);
+    header.appendChild(petName);
 
+    // Subtitle
     const subLabel = document.createElement('div');
     subLabel.className = 'sub-label';
     subLabel.textContent = 'Portions & Grams dispensed today';
-    headerTop.appendChild(subLabel);
+    header.appendChild(subLabel);
 
-    headerTop.appendChild(this._renderDial());
+    // Main row: [Status] | [Dial + Next] | [Tab Buttons]
+    const headerMain = document.createElement('div');
+    headerMain.className = 'header-main';
+
+    // Left: Status icons
+    const headerLeft = document.createElement('div');
+    headerLeft.className = 'header-left';
+    headerLeft.appendChild(this._renderLeftStatus());
+    headerMain.appendChild(headerLeft);
+
+    // Center: Dial + Next schedule
+    const headerCenter = document.createElement('div');
+    headerCenter.className = 'header-center';
+    headerCenter.appendChild(this._renderDial());
 
     const nextRow = document.createElement('div');
     nextRow.className = 'next-schedule-row';
@@ -854,12 +864,12 @@ class PetfeederCard extends HTMLElement {
     } else {
       nextRow.textContent = 'No upcoming schedules';
     }
-    headerTop.appendChild(nextRow);
-    header.appendChild(headerTop);
+    headerCenter.appendChild(nextRow);
+    headerMain.appendChild(headerCenter);
 
-    // Header tabs
-    const headerTabs = document.createElement('div');
-    headerTabs.className = 'header-tabs';
+    // Right: Tab buttons (vertical stack)
+    const headerRight = document.createElement('div');
+    headerRight.className = 'header-right';
 
     const tabs = [
       { key: 'schedules', label: this._config.tabs_config.schedules_label || 'Schedules' },
@@ -876,30 +886,14 @@ class PetfeederCard extends HTMLElement {
         this._activeTab = tab.key;
         this.render();
       });
-      headerTabs.appendChild(tabBtn);
+      headerRight.appendChild(tabBtn);
     });
 
-    header.appendChild(headerTabs);
+    headerMain.appendChild(headerRight);
+    header.appendChild(headerMain);
     wrap.appendChild(header);
 
-    // --- Main Content Layout (left | center) ---
-    const layout = document.createElement('div');
-    layout.className = 'card-layout';
-
-    // --- Left Panel: Status ---
-    const leftPanel = document.createElement('div');
-    leftPanel.className = 'card-left';
-    leftPanel.appendChild(this._renderLeftStatus());
-    layout.appendChild(leftPanel);
-
-    // --- Center: Empty or future use ---
-    const centerPanel = document.createElement('div');
-    centerPanel.className = 'card-center';
-    layout.appendChild(centerPanel);
-
-    wrap.appendChild(layout);
-
-    // --- Tab Content Area (below layout) ---
+    // --- Tab Content Area (below header) ---
     const tabContentArea = document.createElement('div');
     tabContentArea.className = 'tab-content-area';
 
