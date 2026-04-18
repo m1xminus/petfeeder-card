@@ -31,9 +31,9 @@ class PetfeederCard extends HTMLElement {
         settings_label: 'Settings',
         manual_feed: {
           quick_feeds: [
-            { name: 'Quick Feed 1', doses: 1 },
-            { name: 'Quick Feed 2', doses: 2 },
-            { name: 'Quick Feed 3', doses: 3 }
+            { label: '1 Dose', entity: '' },
+            { label: '3 Doses', entity: '' },
+            { label: '6 Doses', entity: '' }
           ],
           custom_doses_entity: '',
           feed_button_entity: ''
@@ -527,29 +527,31 @@ class PetfeederCard extends HTMLElement {
   _renderManualFeedTab() {
     const container = document.createElement('div');
 
+    // Quick feed buttons from config
     const cfg = this._config.tabs_config?.manual_feed || {};
+    const quickFeeds = cfg.quick_feeds || [];
 
-    // Quick feed buttons
-    if (cfg.quick_feeds && cfg.quick_feeds.length > 0) {
-      const quickSection = document.createElement('div');
-      quickSection.style.marginBottom = '16px';
+    const quickSection = document.createElement('div');
+    quickSection.style.marginBottom = '16px';
 
-      const quickTitle = document.createElement('div');
-      quickTitle.className = 'tab-section-title';
-      quickTitle.textContent = 'Quick Feed';
-      quickSection.appendChild(quickTitle);
+    const quickTitle = document.createElement('div');
+    quickTitle.className = 'tab-section-title';
+    quickTitle.textContent = 'Quick Feed';
+    quickSection.appendChild(quickTitle);
 
-      const buttonsContainer = document.createElement('div');
-      buttonsContainer.className = 'quick-feed-buttons';
+    const buttonsContainer = document.createElement('div');
+    buttonsContainer.className = 'quick-feed-buttons';
 
-      cfg.quick_feeds.forEach(feed => {
-        const btn = document.createElement('button');
-        btn.className = 'quick-feed-btn';
-        btn.innerHTML = `<div class="feed-btn-label">${feed.name || 'Feed'}</div><div class="feed-btn-doses">${feed.doses} doses</div>`;
-        btn.addEventListener('click', () => this._feedNow(feed.doses));
-        buttonsContainer.appendChild(btn);
-      });
+    quickFeeds.forEach(feed => {
+      if (!feed.entity) return; // Skip if entity not configured
+      const btn = document.createElement('button');
+      btn.className = 'quick-feed-btn';
+      btn.innerHTML = `<div class="feed-btn-label">${feed.label || 'Feed'}</div>`;
+      btn.addEventListener('click', () => this._pressFeedButton(feed.entity));
+      buttonsContainer.appendChild(btn);
+    });
 
+    if (buttonsContainer.children.length > 0) {
       quickSection.appendChild(buttonsContainer);
       container.appendChild(quickSection);
     }
@@ -588,11 +590,21 @@ class PetfeederCard extends HTMLElement {
     return container;
   }
 
+  _pressFeedButton(entity) {
+    if (!this._hass) return;
+    // Call button.press service on the button entity
+    this._hass.callService('button', 'press', { entity_id: entity });
+  }
+
   _feedNow(doses) {
     if (!this._hass) return;
-    // This will trigger a custom event or call a service
-    // For now, we'll just log it - user can configure via settings
-    console.log(`Feed ${doses} doses`);
+    const feedButtonEntity = this._config.tabs_config?.manual_feed?.feed_button_entity;
+    if (!feedButtonEntity) {
+      console.warn('Feed button entity not configured');
+      return;
+    }
+    // Call button.press service on the configured button entity
+    this._hass.callService('button', 'press', { entity_id: feedButtonEntity });
   }
 
   // --- Stats Tab ---
@@ -1093,7 +1105,7 @@ class PetfeederCardEditor extends HTMLElement {
     }));
 
     // === SCHEDULES SECTION ===
-    editor.appendChild(this._buildSection('Schedules', false, (body) => {
+    editor.appendChild(this._buildSection('Schedules', true, (body) => {
       const addScheduleBtn = document.createElement('button');
       addScheduleBtn.className = 'pf-btn pf-btn-primary pf-btn-sm';
       addScheduleBtn.textContent = '+ Add Schedule';
@@ -1330,7 +1342,7 @@ class PetfeederCardEditor extends HTMLElement {
     }));
 
     // === TABS CONFIGURATION SECTION ===
-    editor.appendChild(this._buildSection('Tabs', false, (body) => {
+    editor.appendChild(this._buildSection('Tabs', true, (body) => {
       // Show tabs toggle
       const showTabsRow = document.createElement('div');
       showTabsRow.className = 'popup-row';
@@ -1496,6 +1508,19 @@ class PetfeederCardEditor extends HTMLElement {
     return field;
   }
 
+  _buildHaEntityPickerRaw(value, onChange) {
+    const picker = document.createElement('ha-entity-picker');
+    picker.hass = this._hass;
+    picker.value = value || '';
+    picker.style.display = 'block';
+    picker.style.width = '100%';
+    picker.addEventListener('value-changed', e => {
+      e.stopPropagation();
+      onChange(e.detail.value);
+    });
+    return picker;
+  }
+
   _buildHaIconPicker(label, value, onChange) {
     const field = document.createElement('div');
     field.className = 'pf-field';
@@ -1600,12 +1625,14 @@ class PetfeederCardEditor extends HTMLElement {
 
     const content = document.createElement('div');
     content.style.cssText = 'display:block';
-    content.style.display = 'none';
+    // Default to open (display:block), user can collapse if needed
+    const isOpen = true;
+    arrow.style.transform = isOpen ? 'rotate(180deg)' : '';
 
     header.addEventListener('click', () => {
-      const isOpen = content.style.display !== 'none';
-      content.style.display = isOpen ? 'none' : 'block';
-      arrow.style.transform = isOpen ? '' : 'rotate(180deg)';
+      const willOpen = content.style.display === 'none';
+      content.style.display = willOpen ? 'block' : 'none';
+      arrow.style.transform = willOpen ? 'rotate(180deg)' : '';
     });
 
     if (tabKey === 'manual_feed') {
@@ -1614,11 +1641,12 @@ class PetfeederCardEditor extends HTMLElement {
       if (!this._config.tabs_config.manual_feed.quick_feeds) this._config.tabs_config.manual_feed.quick_feeds = [];
       
       const cfg = this._config.tabs_config?.manual_feed || {};
+      const quickFeeds = cfg.quick_feeds || [];
 
-      // Quick feeds section
+      // Quick feed buttons section
       const quickTitle = document.createElement('div');
       quickTitle.style.cssText = 'font-size:12px;font-weight:600;color:var(--primary-text-color,#333);margin-bottom:8px;text-transform:uppercase';
-      quickTitle.textContent = 'Quick Feeds';
+      quickTitle.textContent = 'Quick Feed Buttons';
       content.appendChild(quickTitle);
 
       const addQuickBtn = document.createElement('button');
@@ -1628,55 +1656,63 @@ class PetfeederCardEditor extends HTMLElement {
       addQuickBtn.addEventListener('click', () => {
         if (!this._config.tabs_config.manual_feed) this._config.tabs_config.manual_feed = {};
         if (!this._config.tabs_config.manual_feed.quick_feeds) this._config.tabs_config.manual_feed.quick_feeds = [];
-        this._config.tabs_config.manual_feed.quick_feeds.push({ name: 'Quick Feed', doses: 1 });
+        this._config.tabs_config.manual_feed.quick_feeds.push({ label: 'New Feed', entity: '' });
         this._dispatch();
         this._render();
       });
       content.appendChild(addQuickBtn);
 
-      if (cfg.quick_feeds && cfg.quick_feeds.length > 0) {
-        cfg.quick_feeds.forEach((feed, idx) => {
-          const feedRow = document.createElement('div');
-          feedRow.style.cssText = 'display:flex;gap:6px;margin-bottom:6px';
+      quickFeeds.forEach((feed, idx) => {
+        const feedCard = document.createElement('div');
+        feedCard.style.cssText = 'border:1px solid var(--divider-color,#e0e0e0);border-radius:4px;padding:8px;margin-bottom:8px;background:var(--ha-card-background,#fff)';
 
-          const nameInput = document.createElement('input');
-          nameInput.type = 'text';
-          nameInput.className = 'pf-text-input';
-          nameInput.value = feed.name || '';
-          nameInput.placeholder = 'Name';
-          nameInput.style.flex = '1';
-          nameInput.addEventListener('change', e => {
-            this._config.tabs_config.manual_feed.quick_feeds[idx].name = e.target.value;
-            this._dispatch();
-          });
-
-          const dosesInput = document.createElement('input');
-          dosesInput.type = 'number';
-          dosesInput.className = 'pf-text-input';
-          dosesInput.value = feed.doses || 1;
-          dosesInput.min = '1';
-          dosesInput.style.width = '70px';
-          dosesInput.placeholder = 'Doses';
-          dosesInput.addEventListener('change', e => {
-            this._config.tabs_config.manual_feed.quick_feeds[idx].doses = parseInt(e.target.value, 10) || 1;
-            this._dispatch();
-          });
-
-          const removeBtn = document.createElement('button');
-          removeBtn.className = 'pf-btn pf-btn-danger pf-btn-sm';
-          removeBtn.textContent = '✕';
-          removeBtn.addEventListener('click', () => {
-            this._config.tabs_config.manual_feed.quick_feeds.splice(idx, 1);
-            this._dispatch();
-            this._render();
-          });
-
-          feedRow.appendChild(nameInput);
-          feedRow.appendChild(dosesInput);
-          feedRow.appendChild(removeBtn);
-          content.appendChild(feedRow);
+        const labelField = document.createElement('div');
+        labelField.style.cssText = 'margin-bottom:6px';
+        const labelLabel = document.createElement('label');
+        labelLabel.className = 'pf-field-label';
+        labelLabel.textContent = 'Label';
+        const labelInput = document.createElement('input');
+        labelInput.type = 'text';
+        labelInput.className = 'pf-text-input';
+        labelInput.value = feed.label || '';
+        labelInput.placeholder = 'e.g., 1 Dose';
+        labelInput.style.width = '100%';
+        labelInput.addEventListener('change', e => {
+          this._config.tabs_config.manual_feed.quick_feeds[idx].label = e.target.value || 'Feed';
+          this._dispatch();
         });
-      }
+        labelField.appendChild(labelLabel);
+        labelField.appendChild(labelInput);
+        feedCard.appendChild(labelField);
+
+        const entityRow = document.createElement('div');
+        entityRow.style.cssText = 'margin-bottom:6px';
+        const entityLabel = document.createElement('label');
+        entityLabel.className = 'pf-field-label';
+        entityLabel.textContent = 'Button Entity';
+        entityRow.appendChild(entityLabel);
+        
+        const entityPicker = this._buildHaEntityPickerRaw(feed.entity || '', v => {
+          this._config.tabs_config.manual_feed.quick_feeds[idx].entity = v || null;
+          this._dispatch();
+        });
+        entityPicker.style.marginBottom = '6px';
+        entityRow.appendChild(entityPicker);
+        feedCard.appendChild(entityRow);
+
+        const removeBtn = document.createElement('button');
+        removeBtn.className = 'pf-btn pf-btn-danger pf-btn-sm';
+        removeBtn.textContent = 'Remove';
+        removeBtn.style.width = '100%';
+        removeBtn.addEventListener('click', () => {
+          this._config.tabs_config.manual_feed.quick_feeds.splice(idx, 1);
+          this._dispatch();
+          this._render();
+        });
+        feedCard.appendChild(removeBtn);
+
+        content.appendChild(feedCard);
+      });
 
       // Custom feed config
       const customTitle = document.createElement('div');
@@ -1689,7 +1725,7 @@ class PetfeederCardEditor extends HTMLElement {
         this._dispatch();
       }));
 
-      content.appendChild(this._buildHaEntityPicker('Feed Button Service', cfg.feed_button_entity || '', v => {
+      content.appendChild(this._buildHaEntityPicker('Feed Button Entity', cfg.feed_button_entity || '', v => {
         this._config.tabs_config.manual_feed.feed_button_entity = v || null;
         this._dispatch();
       }));
