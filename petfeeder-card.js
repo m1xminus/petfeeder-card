@@ -56,8 +56,9 @@ class PetfeederCard extends HTMLElement {
     const container = document.createElement('div');
     container.className = 'status-row';
     (this._config.status || []).forEach((s, idx) => {
-      if (!s || (!s.entity && !s.icon && !s.name)) {
-        return; // Skip empty slots
+      // Only render if there's name OR icon configured
+      if (!s || (!s.icon && !s.name)) {
+        return;
       }
       const item = document.createElement('div');
       item.className = 'status-item';
@@ -79,15 +80,18 @@ class PetfeederCard extends HTMLElement {
         }
       }
 
-      // Display colored circle (and icon name as fallback text)
-      const dot = document.createElement('div');
-      dot.style.cssText = `width:20px;height:20px;border-radius:50%;background:${color};display:flex;align-items:center;justify-content:center;font-size:10px;color:#fff;font-weight:bold;flex-shrink:0;`;
+      // Only display circle icon if icon is configured
       if (s.icon) {
-        // Extract last part of icon name (e.g., "food-apple" from "mdi:food-apple")
-        const iconName = s.icon.split(':').pop().substring(0, 2).toUpperCase();
-        dot.textContent = iconName;
+        const dot = document.createElement('div');
+        dot.className = 'dot';
+        dot.style.background = color;
+        // Extract icon name from "mdi:sofa" -> "sofa" and convert to MDI class
+        const iconName = s.icon.split(':').pop();
+        const mdiClass = document.createElement('span');
+        mdiClass.className = `mdi mdi-${iconName}`;
+        dot.appendChild(mdiClass);
+        item.appendChild(dot);
       }
-      item.appendChild(dot);
 
       // Display name/label if available
       if (s.name) {
@@ -230,6 +234,7 @@ class PetfeederCard extends HTMLElement {
   render() {
     if (!this._shadow) return;
     const style = `
+      @import url('https://cdnjs.cloudflare.com/ajax/libs/MaterialDesign-Webfont/7.2.96/materialdesignicons.min.css');
       :host{display:block;box-sizing:border-box;padding:8px;max-width:420px;margin:8px auto;font-family:inherit}
       .card{border:1px solid #ddd;border-radius:6px;overflow:hidden;background:#fff}
       .header{display:flex;padding:12px;align-items:center;gap:12px}
@@ -239,7 +244,8 @@ class PetfeederCard extends HTMLElement {
       .pet-img{width:96px;height:96px;border-radius:50%;object-fit:cover;border:3px solid #eee}
       .status-row{display:flex;flex-direction:column;gap:6px}
       .status-item{display:flex;align-items:center;gap:6px}
-      .dot{width:14px;height:14px;border-radius:50%;background:#888}
+      .dot{width:20px;height:20px;border-radius:50%;background:#888;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+      .mdi{font-family:'Material Design Icons';font-size:16px;color:#fff;font-weight:normal;line-height:1}
       .dot.empty{background:transparent;border:2px dashed #ccc}
       .status-title{font-size:12px;color:#666;margin-bottom:6px}
       .menu-wrap{display:flex;justify-content:flex-end}
