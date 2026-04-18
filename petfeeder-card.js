@@ -29,6 +29,7 @@ class PetfeederCard extends HTMLElement {
       content_opacity: 1,
       accent_color: '#4db6ac',
       left_status: [],
+      compact_status: [],
       tabs_config: {
         show_tabs: true,
         active_tab: 'schedules',
@@ -203,6 +204,7 @@ class PetfeederCard extends HTMLElement {
       food_delivery_error_entity: '',
       schedules: [],
       left_status: [],
+      compact_status: [],
       tabs_config: {
         show_tabs: true,
         active_tab: 'schedules',
@@ -308,13 +310,13 @@ class PetfeederCard extends HTMLElement {
     const style = `
       :host{display:block;box-sizing:border-box;padding:0;font-family:Roboto, sans-serif}
       .compact-card{display:flex;flex-direction:column;border-radius:12px;overflow:hidden;background:var(--ha-card-background, #fff);box-shadow:var(--ha-card-box-shadow, 0 2px 6px rgba(0,0,0,0.1));cursor:pointer}
-      .compact-header{background:${headerBg};padding:12px 16px;display:flex;gap:12px;align-items:center}
+      .compact-header{background:${headerBg};padding:12px 16px;display:flex;gap:12px;align-items:flex-start}
       .compact-image{width:40px;height:40px;border-radius:50%;object-fit:cover;flex-shrink:0}
       .compact-info{flex:1;min-width:0}
       .compact-title{font-size:14px;font-weight:500;color:var(--primary-text-color,#333);display:flex;align-items:center;gap:6px}
       .compact-subtitle{font-size:12px;color:var(--secondary-text-color,#888);margin-top:2px}
-      .compact-status{display:flex;gap:8px;margin-top:4px;flex-wrap:wrap}
-      .compact-status-item{font-size:10px;color:var(--secondary-text-color,#888);display:flex;align-items:center;gap:3px}
+      .compact-status{display:flex;gap:8px;margin-top:4px;flex-wrap:wrap;align-items:center}
+      .compact-status-item{font-size:10px;color:var(--secondary-text-color,#888);display:flex;align-items:center;gap:4px;background:var(--ha-card-background, #fff);padding:2px 6px;border-radius:4px}
       .compact-status-icon{width:6px;height:6px;border-radius:50%}
       .compact-progress{padding:0 16px 12px;display:flex;gap:6px;align-items:center;height:32px}
       .compact-progress-bar{flex:1;display:flex;gap:4px;height:12px}
@@ -329,7 +331,7 @@ class PetfeederCard extends HTMLElement {
         .compact-image{width:36px;height:36px}
         .compact-title{font-size:13px}
         .compact-subtitle{font-size:11px}
-        .compact-status-item{font-size:9px}
+        .compact-status-item{font-size:9px;gap:3px}
         .compact-progress{padding:0 12px 10px}
         .compact-stats{padding:0 12px 10px;gap:12px}
         .compact-stat-value{font-size:13px}
@@ -372,24 +374,63 @@ class PetfeederCard extends HTMLElement {
     const statusDiv = document.createElement('div');
     statusDiv.className = 'compact-status';
 
-    (this._config.left_status || []).slice(0, 3).forEach(item => {
-      if (!item || !item.entity || !this._hass) return;
-      const st = this._hass.states[item.entity];
-      if (!st) return;
+    (this._config.compact_status || []).slice(0, 3).forEach(item => {
+      if (!item || (!item.entity && !item.name)) return;
 
       const statusItem = document.createElement('div');
       statusItem.className = 'compact-status-item';
 
-      const indicator = document.createElement('div');
-      indicator.className = 'compact-status-icon';
-      indicator.style.backgroundColor = st.state === 'on' ? this._config.accent_color || '#4db6ac' : '#ccc';
-      statusItem.appendChild(indicator);
+      let color = '#888';
+      let state = '';
 
-      const text = document.createElement('span');
-      text.textContent = item.name || item.entity;
-      statusItem.appendChild(text);
+      if (item.entity && this._hass) {
+        const st = this._hass.states[item.entity];
+        if (st) {
+          state = st.state;
+          if (item.color_map && Array.isArray(item.color_map)) {
+            const mapping = item.color_map.find(m => m.state === st.state);
+            if (mapping) color = mapping.color;
+          } else {
+            color = st.state === 'on' || st.state === 'home' ? '#4caf50' : '#f44336';
+          }
+        }
+      }
 
-      statusDiv.appendChild(statusItem);
+      // Icon
+      if (item.show_icon !== false && item.icon) {
+        const iconSpan = document.createElement('span');
+        iconSpan.style.color = color;
+        iconSpan.style.display = 'inline-flex';
+        iconSpan.style.alignItems = 'center';
+        const haIcon = document.createElement('ha-icon');
+        haIcon.setAttribute('icon', item.icon);
+        haIcon.style.width = '16px';
+        haIcon.style.height = '16px';
+        haIcon.style.fontSize = '16px';
+        iconSpan.appendChild(haIcon);
+        statusItem.appendChild(iconSpan);
+      }
+
+      // Name
+      if (item.show_name !== false && item.name) {
+        const nameSpan = document.createElement('span');
+        nameSpan.textContent = item.name;
+        statusItem.appendChild(nameSpan);
+      }
+
+      // State
+      if (item.show_state !== false && item.entity && this._hass) {
+        const st = this._hass.states[item.entity];
+        if (st) {
+          const stateSpan = document.createElement('span');
+          stateSpan.textContent = this._getFriendlyState(st);
+          statusItem.appendChild(stateSpan);
+        }
+      }
+
+      if (statusItem.children.length > 0) {
+        statusDiv.appendChild(statusItem);
+      }
     });
 
     if (statusDiv.children.length > 0) {
@@ -1984,7 +2025,7 @@ class PetfeederCardEditor extends HTMLElement {
           card.appendChild(showStateRow);
 
           // Color mapping
-          card.appendChild(this._buildColorMapping(idx, true));
+          card.appendChild(this._buildColorMapping(idx, 'left'));
 
           // Remove button
           const removeBtn = document.createElement('button');
@@ -1993,6 +2034,141 @@ class PetfeederCardEditor extends HTMLElement {
           removeBtn.style.marginTop = '8px';
           removeBtn.addEventListener('click', () => {
             this._config.left_status.splice(idx, 1);
+            this._dispatch();
+            this._render();
+          });
+          card.appendChild(removeBtn);
+
+          body.appendChild(card);
+        });
+      }
+    }));
+
+    // === COMPACT STATUS SECTION ===
+    editor.appendChild(this._buildSection('Compact Status (used in compact mode)', false, (body) => {
+      // Ensure compact_status exists
+      if (!this._config.compact_status) this._config.compact_status = [];
+      
+      const addCompactStatusBtn = document.createElement('button');
+      addCompactStatusBtn.className = 'pf-btn pf-btn-primary pf-btn-sm';
+      addCompactStatusBtn.textContent = '+ Add Status Item';
+      addCompactStatusBtn.style.marginBottom = '12px';
+      addCompactStatusBtn.addEventListener('click', () => {
+        if (!this._config.compact_status) this._config.compact_status = [];
+        this._config.compact_status.push({
+          entity: '',
+          name: '',
+          icon: '',
+          show_name: true,
+          show_icon: true,
+          show_state: true,
+          color_map: []
+        });
+        this._dispatch();
+        this._render();
+      });
+      body.appendChild(addCompactStatusBtn);
+
+      if (this._config.compact_status && this._config.compact_status.length > 0) {
+        this._config.compact_status.forEach((item, idx) => {
+          if (!item) return;
+
+          const card = document.createElement('div');
+          card.className = 'pf-status-card';
+
+          const title = document.createElement('div');
+          title.className = 'pf-status-title';
+          title.textContent = `Status Item ${idx + 1}`;
+          card.appendChild(title);
+
+          // Entity picker
+          card.appendChild(this._buildHaEntityPicker('Entity', item.entity || '', v => {
+            this._config.compact_status[idx].entity = v || null;
+            this._dispatch();
+          }));
+
+          // Name
+          card.appendChild(this._buildTextField('Name', item.name || '', 'e.g., Lid', v => {
+            this._config.compact_status[idx].name = v || null;
+            this._dispatch();
+          }));
+
+          // Icon picker
+          card.appendChild(this._buildHaIconPicker('Icon', item.icon || '', v => {
+            this._config.compact_status[idx].icon = v || null;
+            this._dispatch();
+          }));
+
+          // Show Name toggle
+          const showNameRow = document.createElement('div');
+          showNameRow.className = 'popup-row';
+          showNameRow.style.cssText = 'display:flex;align-items:center;justify-content:space-between;margin-bottom:12px';
+          const showNameLabel = document.createElement('label');
+          showNameLabel.className = 'pf-field-label';
+          showNameLabel.textContent = 'Show Name';
+          showNameLabel.style.cssText = 'margin:0';
+          const showNameToggle = document.createElement('div');
+          showNameToggle.className = 'toggle' + (item.show_name !== false ? ' on' : '');
+          showNameToggle.innerHTML = '<div class="toggle-thumb"></div>';
+          showNameToggle.addEventListener('click', () => {
+            this._config.compact_status[idx].show_name = !this._config.compact_status[idx].show_name;
+            showNameToggle.classList.toggle('on');
+            this._dispatch();
+          });
+          showNameRow.appendChild(showNameLabel);
+          showNameRow.appendChild(showNameToggle);
+          card.appendChild(showNameRow);
+
+          // Show Icon toggle
+          const showIconRow = document.createElement('div');
+          showIconRow.className = 'popup-row';
+          showIconRow.style.cssText = 'display:flex;align-items:center;justify-content:space-between;margin-bottom:12px';
+          const showIconLabel = document.createElement('label');
+          showIconLabel.className = 'pf-field-label';
+          showIconLabel.textContent = 'Show Icon';
+          showIconLabel.style.cssText = 'margin:0';
+          const showIconToggle = document.createElement('div');
+          showIconToggle.className = 'toggle' + (item.show_icon !== false ? ' on' : '');
+          showIconToggle.innerHTML = '<div class="toggle-thumb"></div>';
+          showIconToggle.addEventListener('click', () => {
+            this._config.compact_status[idx].show_icon = !this._config.compact_status[idx].show_icon;
+            showIconToggle.classList.toggle('on');
+            this._dispatch();
+          });
+          showIconRow.appendChild(showIconLabel);
+          showIconRow.appendChild(showIconToggle);
+          card.appendChild(showIconRow);
+
+          // Show State toggle
+          const showStateRow = document.createElement('div');
+          showStateRow.className = 'popup-row';
+          showStateRow.style.cssText = 'display:flex;align-items:center;justify-content:space-between;margin-bottom:12px';
+          const showStateLabel = document.createElement('label');
+          showStateLabel.className = 'pf-field-label';
+          showStateLabel.textContent = 'Show State';
+          showStateLabel.style.cssText = 'margin:0';
+          const showStateToggle = document.createElement('div');
+          showStateToggle.className = 'toggle' + (item.show_state !== false ? ' on' : '');
+          showStateToggle.innerHTML = '<div class="toggle-thumb"></div>';
+          showStateToggle.addEventListener('click', () => {
+            this._config.compact_status[idx].show_state = !this._config.compact_status[idx].show_state;
+            showStateToggle.classList.toggle('on');
+            this._dispatch();
+          });
+          showStateRow.appendChild(showStateLabel);
+          showStateRow.appendChild(showStateToggle);
+          card.appendChild(showStateRow);
+
+          // Color mapping
+          card.appendChild(this._buildColorMapping(idx, 'compact'));
+
+          // Remove button
+          const removeBtn = document.createElement('button');
+          removeBtn.className = 'pf-btn pf-btn-danger pf-btn-sm';
+          removeBtn.textContent = 'Remove This Item';
+          removeBtn.style.marginTop = '8px';
+          removeBtn.addEventListener('click', () => {
+            this._config.compact_status.splice(idx, 1);
             this._dispatch();
             this._render();
           });
@@ -2247,8 +2423,9 @@ class PetfeederCardEditor extends HTMLElement {
     return field;
   }
 
-  _buildColorMapping(statusIdx, isLeftStatus = false) {
-    const arr = isLeftStatus ? this._config.left_status : this._config.status;
+  _buildColorMapping(statusIdx, statusType = 'compact') {
+    // statusType can be 'left' for left_status or 'compact' for compact_status
+    const arr = statusType === 'left' ? this._config.left_status : this._config.compact_status;
     const s = arr[statusIdx];
     if (!s.color_map || !Array.isArray(s.color_map)) s.color_map = [];
 
