@@ -11,6 +11,12 @@ class PetfeederCard extends HTMLElement {
       main_title: 'My Feeder',
       show_title: true,
       compact: false,
+      compact_config: {
+        show_status: true,
+        tap_action: {
+          action: 'more-info'
+        }
+      },
       image: '',
       last_feed_entity: null,
       today_grams_entity: null,
@@ -183,6 +189,13 @@ class PetfeederCard extends HTMLElement {
     return {
       main_title: 'My Feeder',
       show_title: true,
+      compact: false,
+      compact_config: {
+        show_status: true,
+        tap_action: {
+          action: 'more-info'
+        }
+      },
       image: '/local/pet.jpg',
       last_feed_entity: '',
       today_grams_entity: '',
@@ -282,6 +295,254 @@ class PetfeederCard extends HTMLElement {
     if (!this._config.today_doses_entity || !this._hass) return 0;
     const st = this._hass.states[this._config.today_doses_entity];
     return st ? parseInt(st.state) || 0 : 0;
+  }
+
+  // --- Compact Card Rendering ---
+
+  _renderCompact() {
+    const accentColor = this._config.accent_color || '#4db6ac';
+    const headerColor = this._config.header_color || '#fff';
+    const headerOpacity = this._config.header_opacity !== undefined ? this._config.header_opacity : 1;
+    const headerBg = this._hexToRgba(headerColor, headerOpacity);
+
+    const style = `
+      :host{display:block;box-sizing:border-box;padding:0;font-family:Roboto, sans-serif}
+      .compact-card{display:flex;flex-direction:column;border-radius:12px;overflow:hidden;background:var(--ha-card-background, #fff);box-shadow:var(--ha-card-box-shadow, 0 2px 6px rgba(0,0,0,0.1));cursor:pointer}
+      .compact-header{background:${headerBg};padding:12px 16px;display:flex;gap:12px;align-items:center}
+      .compact-image{width:40px;height:40px;border-radius:50%;object-fit:cover;flex-shrink:0}
+      .compact-info{flex:1;min-width:0}
+      .compact-title{font-size:14px;font-weight:500;color:var(--primary-text-color,#333);display:flex;align-items:center;gap:6px}
+      .compact-subtitle{font-size:12px;color:var(--secondary-text-color,#888);margin-top:2px}
+      .compact-status{display:flex;gap:8px;margin-top:4px;flex-wrap:wrap}
+      .compact-status-item{font-size:10px;color:var(--secondary-text-color,#888);display:flex;align-items:center;gap:3px}
+      .compact-status-icon{width:6px;height:6px;border-radius:50%}
+      .compact-progress{padding:0 16px 12px;display:flex;gap:6px;align-items:center;height:32px}
+      .compact-progress-bar{flex:1;display:flex;gap:4px;height:12px}
+      .progress-segment{flex:1;height:100%;border-radius:4px;background:var(--divider-color,#e0e0e0);opacity:0.3}
+      .progress-segment.filled{background:${accentColor};opacity:1}
+      .compact-stats{padding:0 16px 12px;display:flex;gap:16px;justify-content:center}
+      .compact-stat{text-align:center}
+      .compact-stat-value{font-size:14px;font-weight:500;color:var(--primary-text-color,#333)}
+      .compact-stat-label{font-size:10px;color:var(--secondary-text-color,#888);margin-top:2px}
+      @media (max-width: 600px){
+        .compact-header{padding:10px 12px;gap:10px}
+        .compact-image{width:36px;height:36px}
+        .compact-title{font-size:13px}
+        .compact-subtitle{font-size:11px}
+        .compact-status-item{font-size:9px}
+        .compact-progress{padding:0 12px 10px}
+        .compact-stats{padding:0 12px 10px;gap:12px}
+        .compact-stat-value{font-size:13px}
+        .compact-stat-label{font-size:9px}
+      }
+    `;
+
+    this._shadow.innerHTML = '';
+    const st = document.createElement('style');
+    st.textContent = style;
+    this._shadow.appendChild(st);
+
+    const card = document.createElement('div');
+    card.className = 'compact-card';
+
+    // Header section
+    const header = document.createElement('div');
+    header.className = 'compact-header';
+
+    // Image + Title section
+    const infoWrapper = document.createElement('div');
+    infoWrapper.className = 'compact-info';
+
+    // Image (if exists)
+    if (this._config.image) {
+      const img = document.createElement('img');
+      img.className = 'compact-image';
+      img.src = this._config.image;
+      img.alt = '';
+      header.appendChild(img);
+    }
+
+    // Title
+    const title = document.createElement('div');
+    title.className = 'compact-title';
+    title.textContent = this._config.main_title || 'My Feeder';
+    infoWrapper.appendChild(title);
+
+    // Status items
+    const statusDiv = document.createElement('div');
+    statusDiv.className = 'compact-status';
+
+    (this._config.left_status || []).slice(0, 3).forEach(item => {
+      if (!item || !item.entity || !this._hass) return;
+      const st = this._hass.states[item.entity];
+      if (!st) return;
+
+      const statusItem = document.createElement('div');
+      statusItem.className = 'compact-status-item';
+
+      const indicator = document.createElement('div');
+      indicator.className = 'compact-status-icon';
+      indicator.style.backgroundColor = st.state === 'on' ? this._config.accent_color || '#4db6ac' : '#ccc';
+      statusItem.appendChild(indicator);
+
+      const text = document.createElement('span');
+      text.textContent = item.name || item.entity;
+      statusItem.appendChild(text);
+
+      statusDiv.appendChild(statusItem);
+    });
+
+    if (statusDiv.children.length > 0) {
+      infoWrapper.appendChild(statusDiv);
+    }
+
+    header.appendChild(infoWrapper);
+    card.appendChild(header);
+
+    // Progress bar section
+    const schedules = this._getScheduleData().filter(s => s.enabled);
+    if (schedules.length > 0) {
+      const progressDiv = document.createElement('div');
+      progressDiv.className = 'compact-progress';
+
+      const progressBar = document.createElement('div');
+      progressBar.className = 'compact-progress-bar';
+
+      // Get current time
+      const now = new Date();
+      if (this._hass && this._hass.states['sensor.time']) {
+        const timeStr = this._hass.states['sensor.time']?.state;
+        if (timeStr && typeof timeStr === 'string') {
+          const [h, m] = timeStr.split(':').map(Number);
+          now.setHours(h, m, 0, 0);
+        }
+      }
+
+      schedules.forEach((sched, idx) => {
+        const segment = document.createElement('div');
+        segment.className = 'progress-segment';
+
+        // Check if this schedule has passed
+        const scheduleTime = new Date(now);
+        scheduleTime.setHours(sched.hour, sched.minute, 0, 0);
+        if (now >= scheduleTime) {
+          segment.classList.add('filled');
+        }
+
+        progressBar.appendChild(segment);
+      });
+
+      progressDiv.appendChild(progressBar);
+      card.appendChild(progressDiv);
+    }
+
+    // Stats section
+    const statsDiv = document.createElement('div');
+    statsDiv.className = 'compact-stats';
+
+    // Portions
+    const dosesState = this._config.today_doses_entity ? this._hass?.states[this._config.today_doses_entity] : null;
+    const doses = dosesState ? parseInt(dosesState.state) || 0 : 0;
+    const dosesEl = document.createElement('div');
+    dosesEl.className = 'compact-stat';
+    const dosesVal = document.createElement('div');
+    dosesVal.className = 'compact-stat-value';
+    dosesVal.textContent = doses;
+    const dosesLabel = document.createElement('div');
+    dosesLabel.className = 'compact-stat-label';
+    dosesLabel.textContent = this._t('portions');
+    dosesEl.appendChild(dosesVal);
+    dosesEl.appendChild(dosesLabel);
+    statsDiv.appendChild(dosesEl);
+
+    // Grams
+    const gramsState = this._config.today_grams_entity ? this._hass?.states[this._config.today_grams_entity] : null;
+    const grams = gramsState ? parseInt(gramsState.state) || 0 : 0;
+    const gramsEl = document.createElement('div');
+    gramsEl.className = 'compact-stat';
+    const gramsVal = document.createElement('div');
+    gramsVal.className = 'compact-stat-value';
+    gramsVal.textContent = grams + 'g';
+    const gramsLabel = document.createElement('div');
+    gramsLabel.className = 'compact-stat-label';
+    gramsLabel.textContent = 'Grams';
+    gramsEl.appendChild(gramsVal);
+    gramsEl.appendChild(gramsLabel);
+    statsDiv.appendChild(gramsEl);
+
+    // Next schedule
+    const nextSchedule = this._computeNextSchedule();
+    const nextEl = document.createElement('div');
+    nextEl.className = 'compact-stat';
+    const nextVal = document.createElement('div');
+    nextVal.className = 'compact-stat-value';
+    if (nextSchedule) {
+      const s = nextSchedule.schedule;
+      nextVal.textContent = `${String(s.hour).padStart(2, '0')}:${String(s.minute).padStart(2, '0')}`;
+    } else {
+      nextVal.textContent = '-';
+    }
+    const nextLabel = document.createElement('div');
+    nextLabel.className = 'compact-stat-label';
+    nextLabel.textContent = this._t('next');
+    nextEl.appendChild(nextVal);
+    nextEl.appendChild(nextLabel);
+    statsDiv.appendChild(nextEl);
+
+    card.appendChild(statsDiv);
+
+    // Add tap action
+    card.addEventListener('click', () => this._handleTapAction());
+
+    this._shadow.appendChild(card);
+  }
+
+  _handleTapAction() {
+    if (!this._hass) return;
+
+    const tapAction = this._config.compact_config?.tap_action || { action: 'more-info' };
+    const action = tapAction.action || 'more-info';
+
+    switch (action) {
+      case 'toggle':
+        if (this._config.today_doses_entity) {
+          const domain = this._config.today_doses_entity.split('.')[0];
+          if (domain === 'switch') {
+            this._hass.callService('switch', 'toggle', {
+              entity_id: this._config.today_doses_entity
+            });
+          }
+        }
+        break;
+      case 'call-service':
+        if (tapAction.service) {
+          const [domain, service] = tapAction.service.split('.');
+          this._hass.callService(domain, service, tapAction.service_data || {});
+        }
+        break;
+      case 'navigate':
+        if (tapAction.navigation_path) {
+          history.pushState(null, '', tapAction.navigation_path);
+        }
+        break;
+      case 'url':
+        if (tapAction.url_path) {
+          window.open(tapAction.url_path, tapAction.url_target || '_blank');
+        }
+        break;
+      case 'more-info':
+      default:
+        // Fire a more-info event
+        const event = new CustomEvent('hass-more-info', {
+          detail: {
+            entityId: this._config.today_doses_entity
+          },
+          bubbles: true,
+          composed: true
+        });
+        this.dispatchEvent(event);
+        break;
+    }
   }
 
   // --- SVG Dial ---
@@ -938,6 +1199,11 @@ class PetfeederCard extends HTMLElement {
   render() {
     if (!this._shadow) return;
 
+    // Use compact rendering if enabled
+    if (this._config.compact) {
+      return this._renderCompact();
+    }
+
     const headerColor = this._config.header_color || '#fff';
     const headerOpacity = this._config.header_opacity !== undefined ? this._config.header_opacity : 1;
     const contentColor = this._config.content_color || '#fafafa';
@@ -1358,6 +1624,67 @@ class PetfeederCardEditor extends HTMLElement {
       field.appendChild(sel);
       body.appendChild(field);
     }));
+
+    // === COMPACT MODE SETTINGS (only show when compact is enabled) ===
+    if (this._config.compact) {
+      editor.appendChild(this._buildSection('Compact Mode Settings', false, (body) => {
+        // Tap Action
+        const tapActionField = document.createElement('div');
+        tapActionField.className = 'pf-field';
+        const tapLabel = document.createElement('label');
+        tapLabel.className = 'pf-field-label';
+        tapLabel.textContent = 'Tap Action';
+        const tapSel = document.createElement('select');
+        tapSel.className = 'pf-select';
+        const tapActions = ['more-info', 'toggle', 'call-service', 'navigate', 'url'];
+        tapActions.forEach(action => {
+          const opt = document.createElement('option');
+          opt.value = action;
+          opt.textContent = action.charAt(0).toUpperCase() + action.slice(1).replace('-', ' ');
+          tapSel.appendChild(opt);
+        });
+        const currentAction = this._config.compact_config?.tap_action?.action || 'more-info';
+        tapSel.value = currentAction;
+        tapSel.addEventListener('change', e => {
+          if (!this._config.compact_config) this._config.compact_config = {};
+          this._config.compact_config.tap_action = { action: e.target.value };
+          this._dispatch();
+        });
+        tapActionField.appendChild(tapLabel);
+        tapActionField.appendChild(tapSel);
+        body.appendChild(tapActionField);
+
+        // Service for call-service action
+        if (currentAction === 'call-service') {
+          body.appendChild(this._buildTextField('Service', this._config.compact_config?.tap_action?.service || '', 'e.g., light.turn_on', v => {
+            if (!this._config.compact_config) this._config.compact_config = {};
+            if (!this._config.compact_config.tap_action) this._config.compact_config.tap_action = { action: 'call-service' };
+            this._config.compact_config.tap_action.service = v;
+            this._dispatch();
+          }));
+        }
+
+        // Navigation path for navigate action
+        if (currentAction === 'navigate') {
+          body.appendChild(this._buildTextField('Navigation Path', this._config.compact_config?.tap_action?.navigation_path || '', 'e.g., /lovelace/my-view', v => {
+            if (!this._config.compact_config) this._config.compact_config = {};
+            if (!this._config.compact_config.tap_action) this._config.compact_config.tap_action = { action: 'navigate' };
+            this._config.compact_config.tap_action.navigation_path = v;
+            this._dispatch();
+          }));
+        }
+
+        // URL for url action
+        if (currentAction === 'url') {
+          body.appendChild(this._buildTextField('URL', this._config.compact_config?.tap_action?.url_path || '', 'e.g., https://example.com', v => {
+            if (!this._config.compact_config) this._config.compact_config = {};
+            if (!this._config.compact_config.tap_action) this._config.compact_config.tap_action = { action: 'url' };
+            this._config.compact_config.tap_action.url_path = v;
+            this._dispatch();
+          }));
+        }
+      }));
+    }
 
     // === HEADER SECTION ===
     editor.appendChild(this._buildSection('Header', false, (body) => {
