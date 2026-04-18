@@ -721,7 +721,7 @@ class PetfeederCardEditor extends HTMLElement {
 
   _makeColorMapBuilder(statusIdx) {
     const container = document.createElement('div');
-    container.style.marginBottom = '10px';
+    container.style.cssText = 'border:1px solid #444;border-radius:4px;padding:8px;background:#3a3a3a;margin-bottom:10px';
     
     const s = (this._config.status && this._config.status[statusIdx]) || {};
     const colorMap = s.color_map || [];
@@ -729,91 +729,84 @@ class PetfeederCardEditor extends HTMLElement {
       this._config.status[statusIdx].color_map = [];
     }
 
-    // Entity selector
-    const entityRow = document.createElement('div');
-    entityRow.className = 'row';
-    const entityLabel = document.createElement('div');
-    entityLabel.className = 'label-small';
-    entityLabel.textContent = 'Select Entity:';
-    const entitySelect = document.createElement('select');
-    entitySelect.className = 'input';
-    entitySelect.style.marginBottom = '8px';
+    // Entity picker section
+    const pickerContainer = document.createElement('div');
+    pickerContainer.style.marginBottom = '10px';
     
-    // Add entity options
-    const option = document.createElement('option');
-    option.value = '';
-    option.textContent = '-- Choose entity --';
-    entitySelect.appendChild(option);
+    const pickerLabel = document.createElement('div');
+    pickerLabel.className = 'label';
+    pickerLabel.textContent = 'Entity';
+    pickerContainer.appendChild(pickerLabel);
     
-    if (this._hass) {
-      Object.keys(this._hass.states).forEach(entityId => {
-        const opt = document.createElement('option');
-        opt.value = entityId;
-        opt.textContent = entityId;
-        entitySelect.appendChild(opt);
-      });
-    }
+    const haEntityPicker = document.createElement('ha-entity-picker');
+    haEntityPicker.hass = this._hass;
+    haEntityPicker.style.width = '100%';
+    
+    let selectedEntity = '';
+    haEntityPicker.addEventListener('value-changed', (e) => {
+      selectedEntity = e.detail.value;
+    });
+    
+    pickerContainer.appendChild(haEntityPicker);
+    container.appendChild(pickerContainer);
 
+    // Add mapping button
+    const addBtnContainer = document.createElement('div');
+    addBtnContainer.style.display = 'flex';
+    addBtnContainer.style.gap = '6px';
+    
     const addMappingBtn = document.createElement('button');
     addMappingBtn.className = 'btn btn-sm';
     addMappingBtn.textContent = '+ Add State Mapping';
     addMappingBtn.addEventListener('click', () => {
-      const selectedEntity = entitySelect.value;
-      if (!selectedEntity) return;
+      if (!selectedEntity || !this._hass || !this._hass.states[selectedEntity]) return;
+      
+      const entity = this._hass.states[selectedEntity];
+      const state = entity.state;
       
       if (!this._config.status[statusIdx].color_map) {
         this._config.status[statusIdx].color_map = [];
       }
       
-      // Get available states from entity
-      if (this._hass && this._hass.states[selectedEntity]) {
-        const entity = this._hass.states[selectedEntity];
-        const availableStates = entity.attributes?.options || [entity.state];
-        
-        if (availableStates.length > 0) {
-          const state = availableStates[0];
-          this._config.status[statusIdx].color_map.push({ state, color: '#888888' });
-          this._dispatch();
-          this._render();
-        }
+      // Check if this state already exists
+      const exists = this._config.status[statusIdx].color_map.find(m => m.state === state);
+      if (!exists) {
+        this._config.status[statusIdx].color_map.push({ state, color: '#888888' });
+        this._dispatch();
+        this._render();
       }
     });
     
-    entityRow.appendChild(entityLabel);
-    entityRow.appendChild(entitySelect);
-    entityRow.appendChild(addMappingBtn);
-    container.appendChild(entityRow);
+    addBtnContainer.appendChild(addMappingBtn);
+    container.appendChild(addBtnContainer);
 
     // Current mappings
     if (colorMap && Array.isArray(colorMap) && colorMap.length > 0) {
       const mappingsTitle = document.createElement('div');
       mappingsTitle.style.fontWeight = '600';
-      mappingsTitle.style.marginTop = '10px';
-      mappingsTitle.style.marginBottom = '6px';
-      mappingsTitle.textContent = 'State Mappings:';
+      mappingsTitle.style.marginTop = '12px';
+      mappingsTitle.style.marginBottom = '8px';
+      mappingsTitle.style.fontSize = '13px';
+      mappingsTitle.textContent = 'Mappings:';
       container.appendChild(mappingsTitle);
 
       colorMap.forEach((mapping, idx) => {
-        const mappingRow = document.createElement('div');
-        mappingRow.style.display = 'flex';
-        mappingRow.style.gap = '6px';
-        mappingRow.style.marginBottom = '6px';
-        mappingRow.style.alignItems = 'center';
+        const mappingItem = document.createElement('div');
+        mappingItem.style.cssText = 'display:flex;gap:8px;margin-bottom:6px;align-items:center;background:#2a2a2a;padding:8px;border-radius:4px';
 
-        // State display
-        const stateSpan = document.createElement('div');
-        stateSpan.style.minWidth = '80px';
-        stateSpan.style.fontWeight = '500';
-        stateSpan.textContent = mapping.state || 'unknown';
+        // State label
+        const stateLabel = document.createElement('div');
+        stateLabel.style.cssText = 'flex:1;font-size:13px;font-weight:500;color:#e0e0e0';
+        stateLabel.textContent = `State: ${mapping.state}`;
 
         // Color picker
         const colorInput = document.createElement('input');
         colorInput.type = 'color';
         colorInput.value = mapping.color || '#888888';
-        colorInput.style.width = '50px';
+        colorInput.style.width = '44px';
         colorInput.style.height = '32px';
         colorInput.style.cursor = 'pointer';
-        colorInput.style.border = '1px solid #ccc';
+        colorInput.style.border = 'none';
         colorInput.style.borderRadius = '4px';
         colorInput.addEventListener('change', e => {
           this._config.status[statusIdx].color_map[idx].color = e.target.value;
@@ -823,6 +816,7 @@ class PetfeederCardEditor extends HTMLElement {
         // Remove button
         const removeBtn = document.createElement('button');
         removeBtn.className = 'btn btn-danger btn-sm';
+        removeBtn.style.padding = '4px 6px';
         removeBtn.textContent = '✕';
         removeBtn.addEventListener('click', () => {
           this._config.status[statusIdx].color_map.splice(idx, 1);
@@ -830,10 +824,10 @@ class PetfeederCardEditor extends HTMLElement {
           this._render();
         });
 
-        mappingRow.appendChild(stateSpan);
-        mappingRow.appendChild(colorInput);
-        mappingRow.appendChild(removeBtn);
-        container.appendChild(mappingRow);
+        mappingItem.appendChild(stateLabel);
+        mappingItem.appendChild(colorInput);
+        mappingItem.appendChild(removeBtn);
+        container.appendChild(mappingItem);
       });
     }
 
