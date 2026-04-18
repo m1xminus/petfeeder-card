@@ -563,7 +563,8 @@ class PetfeederCard extends HTMLElement {
         break;
       case 'navigate':
         if (tapAction.navigation_path) {
-          history.pushState(null, '', tapAction.navigation_path);
+          // For hash-based navigation (e.g., bubble card popups)
+          window.location.hash = tapAction.navigation_path;
         }
         break;
       case 'url':
@@ -573,15 +574,15 @@ class PetfeederCard extends HTMLElement {
         break;
       case 'more-info':
       default:
-        // Fire a more-info event
-        const event = new CustomEvent('hass-more-info', {
-          detail: {
-            entityId: this._config.today_doses_entity
-          },
-          bubbles: true,
-          composed: true
-        });
-        this.dispatchEvent(event);
+        // Open more-info dialog for entity
+        if (this._config.today_doses_entity) {
+          const event = new CustomEvent('hass-more-info', {
+            detail: { entityId: this._config.today_doses_entity },
+            bubbles: true,
+            composed: true
+          });
+          document.body.dispatchEvent(event);
+        }
         break;
     }
   }
