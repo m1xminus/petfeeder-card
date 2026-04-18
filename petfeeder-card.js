@@ -737,25 +737,29 @@ class PetfeederCard extends HTMLElement {
     const style = `
       :host{display:block;box-sizing:border-box;padding:0;max-width:800px;margin:0 auto;font-family:var(--paper-font-body1_-_font-family, Roboto, sans-serif)}
       .card{border-radius:12px;overflow:hidden;background:var(--ha-card-background, #fff);box-shadow:var(--ha-card-box-shadow, 0 2px 6px rgba(0,0,0,0.1));display:flex;flex-direction:column}
-      .card-layout{display:flex;gap:0;min-height:450px}
+      .card-layout{display:flex;gap:0;min-height:350px}
       .card-left{flex:0 0 100px;background:var(--secondary-background-color,#f5f5f5);padding:12px 8px;border-right:2px solid var(--divider-color,#e0e0e0);display:flex;flex-direction:column;gap:8px;overflow-y:auto}
       .card-center{flex:1;padding:16px;background:${contentBg};display:flex;flex-direction:column;align-items:center}
-      .card-right{flex:0 0 200px;background:${contentBg};padding:0;border-left:2px solid var(--divider-color,#e0e0e0);display:flex;flex-direction:column}
       .left-status-panel{display:flex;flex-direction:column;gap:8px}
       .left-status-item{display:flex;flex-direction:column;align-items:center;gap:4px;padding:8px;background:var(--ha-card-background,#fff);border-radius:6px;border:1px solid var(--divider-color,#e0e0e0)}
       .left-status-icon{font-size:28px;color:#888;display:flex;align-items:center;justify-content:center}
       .left-status-name{font-size:10px;color:var(--secondary-text-color,#888);text-align:center;word-break:break-word;max-width:80px}
       .card-header{background:${headerBg};padding:20px 16px 16px;text-align:center;position:relative}
-      .pet-name{font-size:16px;font-weight:500;color:var(--primary-text-color,#333);margin-bottom:4px;display:flex;align-items:center;justify-content:center;gap:8px}
+      .header-top{display:flex;flex-direction:column;align-items:center;gap:8px;margin-bottom:16px}
+      .pet-name{font-size:16px;font-weight:500;color:var(--primary-text-color,#333);display:flex;align-items:center;justify-content:center;gap:8px}
       .pet-name img{width:28px;height:28px;border-radius:50%;object-fit:cover}
-      .sub-label{font-size:12px;color:var(--secondary-text-color,#888);margin-bottom:16px}
+      .sub-label{font-size:12px;color:var(--secondary-text-color,#888)}
       .dial-container{position:relative;width:200px;height:200px;margin:0 auto}
       .dial-center{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center}
       .dial-grams{font-size:48px;font-weight:300;color:var(--primary-text-color,#333);line-height:1}
       .dial-label{font-size:12px;color:var(--secondary-text-color,#888);margin-top:4px}
-      .next-schedule-row{margin-top:12px;font-size:13px;color:var(--secondary-text-color,#888);text-align:center}
-      .card-content{background:${contentBg};padding:16px}
-      .schedule-section{padding:0;display:none}
+      .next-schedule-row{margin-top:8px;font-size:13px;color:var(--secondary-text-color,#888);text-align:center}
+      .header-tabs{display:flex;border-bottom:2px solid var(--divider-color,#e0e0e0);background:var(--ha-card-background,#fff);margin-top:16px;margin-left:-16px;margin-right:-16px;padding:0 16px}
+      .tab-btn{flex:1;padding:12px 8px;border:none;background:transparent;color:var(--secondary-text-color,#888);font-size:11px;font-weight:500;cursor:pointer;transition:all 0.2s;border-bottom:3px solid transparent;text-align:center;white-space:nowrap}
+      .tab-btn:hover{background:var(--secondary-background-color,#f5f5f5)}
+      .tab-btn.active{color:${accentColor};border-bottom-color:${accentColor};background:transparent}
+      .tab-content-area{background:${contentBg};padding:16px;border-top:2px solid var(--divider-color,#e0e0e0)}
+      .schedule-section{display:none}
       .schedule-section.active{display:block}
       .schedule-item{display:flex;align-items:center;gap:12px;padding:10px 8px;border-radius:8px;transition:background 0.15s}
       .schedule-item:hover{background:var(--secondary-background-color, rgba(0,0,0,.03))}
@@ -765,12 +769,6 @@ class PetfeederCard extends HTMLElement {
       .timeline-line{position:absolute;top:16px;bottom:-10px;left:50%;width:2px;background:var(--divider-color, #ddd);transform:translateX(-50%)}
       .schedule-time{font-size:16px;font-weight:500;color:var(--primary-text-color,#333);min-width:54px}
       .schedule-doses{font-size:13px;color:var(--secondary-text-color,#888);flex:1;text-align:right}
-      .tabs-container{display:flex;flex-direction:column;height:100%}
-      .tabs-header{display:flex;border-bottom:2px solid var(--divider-color,#e0e0e0);background:var(--ha-card-background,#fff)}
-      .tab-btn{flex:1;padding:12px 8px;border:none;background:transparent;color:var(--secondary-text-color,#888);font-size:11px;font-weight:500;cursor:pointer;transition:all 0.2s;border-bottom:3px solid transparent;text-align:center;white-space:nowrap}
-      .tab-btn:hover{background:var(--secondary-background-color,#f5f5f5)}
-      .tab-btn.active{color:${accentColor};border-bottom-color:${accentColor};background:transparent}
-      .tabs-content{flex:1;overflow-y:auto;padding:12px 8px}
       .tab-content-manual-feed,.tab-content-stats,.tab-content-settings{display:none}
       .tab-content-manual-feed.active,.tab-content-stats.active,.tab-content-settings.active{display:block}
       .tab-section-title{font-size:12px;font-weight:600;color:var(--primary-text-color,#333);text-transform:uppercase;margin-bottom:8px;letter-spacing:0.5px}
@@ -791,11 +789,6 @@ class PetfeederCard extends HTMLElement {
       .settings-value{font-size:12px;color:var(--secondary-text-color,#888)}
       .settings-btn{padding:6px 10px;border:1px solid var(--divider-color,#e0e0e0);background:var(--ha-card-background,#fff);color:var(--primary-text-color,#333);border-radius:4px;font-size:11px;cursor:pointer;transition:all 0.2s}
       .settings-btn:hover{background:var(--secondary-background-color,#f5f5f5);border-color:${accentColor}}
-      .status-bar{display:flex;justify-content:space-around;padding:12px 8px;border-top:1px solid var(--divider-color,#eee);background:var(--ha-card-background,#fff)}
-      .status-row{display:flex;justify-content:space-around;width:100%}
-      .status-item{display:flex;flex-direction:column;align-items:center;gap:4px;min-width:60px}
-      .status-label{font-size:11px;color:var(--secondary-text-color,#888);text-transform:uppercase;letter-spacing:0.3px}
-      .status-dot{width:36px;height:36px;border-radius:50%;border:2px solid #ccc;display:flex;align-items:center;justify-content:center;background:transparent}
       .popup-overlay{position:absolute;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:100;border-radius:12px}
       .popup{background:var(--ha-card-background, #fff);border-radius:12px;padding:24px;min-width:260px;max-width:320px;position:relative;box-shadow:0 8px 32px rgba(0,0,0,0.2)}
       .popup-title{font-size:18px;font-weight:500;color:var(--primary-text-color,#333);margin-bottom:20px;text-align:center}
@@ -826,6 +819,10 @@ class PetfeederCard extends HTMLElement {
     const header = document.createElement('div');
     header.className = 'card-header';
 
+    // Header top (title, subtitle, dial, next schedule)
+    const headerTop = document.createElement('div');
+    headerTop.className = 'header-top';
+
     const petName = document.createElement('div');
     petName.className = 'pet-name';
     if (this._config.image) {
@@ -839,14 +836,14 @@ class PetfeederCard extends HTMLElement {
       nameSpan.textContent = this._config.main_title || 'My Feeder';
       petName.appendChild(nameSpan);
     }
-    header.appendChild(petName);
+    headerTop.appendChild(petName);
 
     const subLabel = document.createElement('div');
     subLabel.className = 'sub-label';
     subLabel.textContent = 'Portions & Grams dispensed today';
-    header.appendChild(subLabel);
+    headerTop.appendChild(subLabel);
 
-    header.appendChild(this._renderDial());
+    headerTop.appendChild(this._renderDial());
 
     const nextRow = document.createElement('div');
     nextRow.className = 'next-schedule-row';
@@ -857,41 +854,12 @@ class PetfeederCard extends HTMLElement {
     } else {
       nextRow.textContent = 'No upcoming schedules';
     }
-    header.appendChild(nextRow);
-    wrap.appendChild(header);
+    headerTop.appendChild(nextRow);
+    header.appendChild(headerTop);
 
-    // --- Main Content Layout (left | center | right) ---
-    const layout = document.createElement('div');
-    layout.className = 'card-layout';
-
-    // --- Left Panel: Status ---
-    const leftPanel = document.createElement('div');
-    leftPanel.className = 'card-left';
-    leftPanel.appendChild(this._renderLeftStatus());
-    layout.appendChild(leftPanel);
-
-    // --- Center: Dial and Schedules ---
-    const centerPanel = document.createElement('div');
-    centerPanel.className = 'card-center';
-
-    // Schedule timeline
-    const scheduleSection = document.createElement('div');
-    scheduleSection.className = 'schedule-section' + (this._activeTab === 'schedules' ? ' active' : '');
-    scheduleSection.appendChild(this._renderScheduleTimeline());
-    centerPanel.appendChild(scheduleSection);
-
-    layout.appendChild(centerPanel);
-
-    // --- Right Panel: Tabs ---
-    const rightPanel = document.createElement('div');
-    rightPanel.className = 'card-right';
-
-    const tabsContainer = document.createElement('div');
-    tabsContainer.className = 'tabs-container';
-
-    // Tab headers
-    const tabsHeader = document.createElement('div');
-    tabsHeader.className = 'tabs-header';
+    // Header tabs
+    const headerTabs = document.createElement('div');
+    headerTabs.className = 'header-tabs';
 
     const tabs = [
       { key: 'schedules', label: this._config.tabs_config.schedules_label || 'Schedules' },
@@ -908,44 +876,58 @@ class PetfeederCard extends HTMLElement {
         this._activeTab = tab.key;
         this.render();
       });
-      tabsHeader.appendChild(tabBtn);
+      headerTabs.appendChild(tabBtn);
     });
 
-    tabsContainer.appendChild(tabsHeader);
+    header.appendChild(headerTabs);
+    wrap.appendChild(header);
 
-    // Tab content
-    const tabsContent = document.createElement('div');
-    tabsContent.className = 'tabs-content';
+    // --- Main Content Layout (left | center) ---
+    const layout = document.createElement('div');
+    layout.className = 'card-layout';
+
+    // --- Left Panel: Status ---
+    const leftPanel = document.createElement('div');
+    leftPanel.className = 'card-left';
+    leftPanel.appendChild(this._renderLeftStatus());
+    layout.appendChild(leftPanel);
+
+    // --- Center: Empty or future use ---
+    const centerPanel = document.createElement('div');
+    centerPanel.className = 'card-center';
+    layout.appendChild(centerPanel);
+
+    wrap.appendChild(layout);
+
+    // --- Tab Content Area (below layout) ---
+    const tabContentArea = document.createElement('div');
+    tabContentArea.className = 'tab-content-area';
 
     // Schedules tab content
     const schedTab = document.createElement('div');
     schedTab.className = 'schedule-section' + (this._activeTab === 'schedules' ? ' active' : '');
     schedTab.appendChild(this._renderScheduleTimeline());
-    tabsContent.appendChild(schedTab);
+    tabContentArea.appendChild(schedTab);
 
     // Manual Feed tab
     const manualFeedTab = document.createElement('div');
     manualFeedTab.className = 'tab-content-manual-feed' + (this._activeTab === 'manual_feed' ? ' active' : '');
     manualFeedTab.appendChild(this._renderManualFeedTab());
-    tabsContent.appendChild(manualFeedTab);
+    tabContentArea.appendChild(manualFeedTab);
 
     // Stats tab
     const statsTab = document.createElement('div');
     statsTab.className = 'tab-content-stats' + (this._activeTab === 'stats' ? ' active' : '');
     statsTab.appendChild(this._renderStatsTab());
-    tabsContent.appendChild(statsTab);
+    tabContentArea.appendChild(statsTab);
 
     // Settings tab
     const settingsTab = document.createElement('div');
     settingsTab.className = 'tab-content-settings' + (this._activeTab === 'settings' ? ' active' : '');
     settingsTab.appendChild(this._renderSettingsTab());
-    tabsContent.appendChild(settingsTab);
+    tabContentArea.appendChild(settingsTab);
 
-    tabsContainer.appendChild(tabsContent);
-    rightPanel.appendChild(tabsContainer);
-    layout.appendChild(rightPanel);
-
-    wrap.appendChild(layout);
+    wrap.appendChild(tabContentArea);
 
     this._shadow.appendChild(wrap);
   }
