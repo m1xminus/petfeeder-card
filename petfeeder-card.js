@@ -4,6 +4,8 @@ class PetfeederCard extends HTMLElement {
     this._config = {};
     this._popupOpen = false;
     this._shadow = this.attachShadow({ mode: 'open' });
+    this._hasRendered = false;
+    this._visibilityObserver = null;
   }
 
   setConfig(config) {
@@ -51,7 +53,13 @@ class PetfeederCard extends HTMLElement {
       }
     }, config || {});
     this._activeTab = null;
-    this.render();
+    
+    // Delay render to ensure element is attached and config is fully set
+    if (this._hasRendered) {
+      this.render();
+    } else {
+      requestAnimationFrame(() => this.render());
+    }
   }
 
   getCardSize() {
@@ -1241,6 +1249,19 @@ class PetfeederCard extends HTMLElement {
   render() {
     if (!this._shadow) return;
 
+    this._hasRendered = true;
+    
+    // Setup visibility observer for SVG rendering on popup load
+    if (!this._visibilityObserver && typeof IntersectionObserver !== 'undefined') {
+      this._visibilityObserver = new IntersectionObserver((entries) => {
+        if (entries[0].isIntersecting && this._hasRendered) {
+          // Re-render to ensure SVG is displayed
+          this._forceRender = true;
+        }
+      });
+      this._visibilityObserver.observe(this);
+    }
+
     // Use compact rendering if enabled
     if (this._config.compact) {
       return this._renderCompact();
@@ -1265,7 +1286,7 @@ class PetfeederCard extends HTMLElement {
       .header-main{display:flex;align-items:center;justify-content:center;gap:0;padding:0 8px}
       .header-left{flex:0 0 100px;display:flex;flex-direction:column;gap:8px;align-items:center;padding:8px 4px}
       .header-center{flex:1;display:flex;flex-direction:column;align-items:center;padding:0 12px}
-      .header-right{flex:0 0 120px;display:flex;flex-direction:column;gap:4px;align-items:stretch;padding:8px 16px;margin:0 16px}
+      .header-right{flex:0 0 160px;display:flex;flex-direction:column;gap:4px;align-items:stretch;padding:8px 12px;margin:0 8px}
       .left-status-panel{display:flex;flex-direction:column;gap:8px;width:100%}
       .left-status-item{display:flex;flex-direction:column;align-items:center;gap:2px;padding:6px 8px;background:transparent;border-radius:6px;border:none}
       .left-status-icon{font-size:28px;color:#888;display:flex;align-items:center;justify-content:center}
@@ -1344,7 +1365,7 @@ class PetfeederCard extends HTMLElement {
         .header-main{gap:0;padding:0 4px}
         .header-left{flex:0 0 100px;padding:4px 2px;gap:4px}
         .header-center{padding:0;flex:1}
-        .header-right{flex:0 0 100px;padding:4px 4px;gap:2px}
+        .header-right{flex:0 0 120px;padding:3px 2px;gap:2px}
         .dial-container{width:140px;height:140px;margin:0 8px}
         .dial-grams{font-size:36px}
         .dial-label{font-size:10px;margin-top:2px}
@@ -1362,7 +1383,7 @@ class PetfeederCard extends HTMLElement {
         .header-main{gap:0;padding:0 2px}
         .header-left{flex:0 0 80px;padding:3px 1px;gap:3px}
         .header-center{padding:0;flex:1}
-        .header-right{flex:0 0 80px;padding:3px 3px;gap:2px}
+        .header-right{flex:0 0 100px;padding:2px 2px;gap:2px}
         .dial-container{width:120px;height:120px;margin:0 6px}
         .dial-grams{font-size:32px}
         .dial-label{font-size:9px;margin-top:1px}
