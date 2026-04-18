@@ -859,7 +859,7 @@ class PetfeederCard extends HTMLElement {
       .left-status-icon{font-size:28px;color:#888;display:flex;align-items:center;justify-content:center}
       .left-status-name{font-size:11px;color:var(--secondary-text-color,#888);text-align:center;word-break:break-word;max-width:80px;font-weight:500}
       .left-status-state{font-size:10px;color:var(--secondary-text-color,#888);text-align:center}
-      .dial-container{position:relative;width:200px;height:200px;margin:0 auto}
+      .dial-container{position:relative;width:200px;height:200px;margin:0 auto;flex-shrink:0}
       .dial-center{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center}
       .dial-grams{font-size:48px;font-weight:300;color:var(--primary-text-color,#333);line-height:1}
       .dial-label{font-size:12px;color:var(--secondary-text-color,#888);margin-top:4px}
@@ -920,46 +920,44 @@ class PetfeederCard extends HTMLElement {
       .toggle-thumb{width:22px;height:22px;border-radius:50%;background:#fff;position:absolute;top:2px;left:2px;transition:transform 0.2s;box-shadow:0 1px 3px rgba(0,0,0,0.2)}
       .toggle.on .toggle-thumb{transform:translateX(22px)}
       @media (max-width: 768px){
-        .dial-container{width:160px;height:160px}
+        .dial-container{width:160px;height:160px;margin:0 auto}
         .dial-grams{font-size:40px}
         .dial-label{font-size:11px}
-        .header-left{flex:0 0 85px}
-        .header-right{flex:0 0 105px;margin:0 12px;padding:8px 12px}
       }
       @media (max-width: 600px){
-        .card-header{padding:14px 12px 0}
+        .card-header{padding:14px 8px 0}
         .pet-name{font-size:14px;gap:6px;margin-bottom:2px}
         .pet-name img{width:24px;height:24px}
         .sub-label{font-size:11px;margin-bottom:12px}
-        .header-main{gap:0;padding:0 6px}
-        .header-left{flex:0 0 75px;padding:6px 2px;gap:6px}
-        .header-center{padding:0 8px}
-        .header-right{flex:0 0 90px;margin:0 8px;padding:6px 10px;gap:3px}
-        .dial-container{width:140px;height:140px}
+        .header-main{gap:0;padding:0 4px}
+        .header-left{flex:0 0 100px;padding:4px 2px;gap:4px}
+        .header-center{padding:0;flex:1}
+        .header-right{flex:0 0 100px;padding:4px 4px;gap:2px}
+        .dial-container{width:140px;height:140px;margin:0 8px}
         .dial-grams{font-size:36px}
         .dial-label{font-size:10px;margin-top:2px}
         .next-schedule-row{font-size:12px;margin-top:6px;margin-bottom:8px}
-        .tab-btn{font-size:10px;padding:8px 6px}
+        .tab-btn{font-size:10px;padding:8px 4px;width:100%}
         .left-status-icon{font-size:24px}
-        .left-status-name{max-width:60px;font-size:10px}
+        .left-status-name{max-width:55px;font-size:10px}
         .left-status-state{font-size:9px}
       }
       @media (max-width: 480px){
-        .card-header{padding:12px 8px 0}
+        .card-header{padding:12px 6px 0}
         .pet-name{font-size:13px;gap:4px;margin-bottom:1px}
         .pet-name img{width:22px;height:22px}
         .sub-label{font-size:10px;margin-bottom:10px}
-        .header-main{gap:2px;padding:0 4px}
-        .header-left{flex:0 0 65px;padding:4px 2px;gap:4px}
-        .header-center{padding:0 6px}
-        .header-right{flex:0 0 80px;margin:0 4px;padding:4px 8px;gap:2px}
-        .dial-container{width:120px;height:120px}
+        .header-main{gap:0;padding:0 2px}
+        .header-left{flex:0 0 80px;padding:3px 1px;gap:3px}
+        .header-center{padding:0;flex:1}
+        .header-right{flex:0 0 80px;padding:3px 3px;gap:2px}
+        .dial-container{width:120px;height:120px;margin:0 6px}
         .dial-grams{font-size:32px}
         .dial-label{font-size:9px;margin-top:1px}
         .next-schedule-row{font-size:11px;margin-top:4px;margin-bottom:6px}
-        .tab-btn{font-size:9px;padding:6px 4px}
+        .tab-btn{font-size:9px;padding:6px 3px;width:100%}
         .left-status-icon{font-size:20px}
-        .left-status-name{max-width:55px;font-size:9px}
+        .left-status-name{max-width:50px;font-size:9px}
         .left-status-state{font-size:8px}
       }
     `;
