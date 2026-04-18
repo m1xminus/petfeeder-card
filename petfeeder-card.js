@@ -2,6 +2,7 @@ class PetfeederCard extends HTMLElement {
   constructor() {
     super();
     this._config = {};
+    this._popupOpen = false;
     this._shadow = this.attachShadow({ mode: 'open' });
   }
 
@@ -385,10 +386,23 @@ class PetfeederCard extends HTMLElement {
         });
       }
       if (cfg.enabled_entity) {
-        this._hass.callService('switch', toggleState ? 'turn_on' : 'turn_off', {
-          entity_id: cfg.enabled_entity
-        });
+        const domain = cfg.enabled_entity.split('.')[0];
+        if (domain === 'switch') {
+          this._hass.callService('switch', toggleState ? 'turn_on' : 'turn_off', {
+            entity_id: cfg.enabled_entity
+          });
+        } else if (domain === 'number') {
+          this._hass.callService('number', 'set_value', {
+            entity_id: cfg.enabled_entity,
+            value: toggleState ? 1 : 0
+          });
+        } else if (domain === 'input_boolean') {
+          this._hass.callService('input_boolean', toggleState ? 'turn_on' : 'turn_off', {
+            entity_id: cfg.enabled_entity
+          });
+        }
       }
+      closePopup();
     });
     popup.appendChild(saveBtn);
 
