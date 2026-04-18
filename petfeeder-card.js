@@ -334,7 +334,7 @@ class PetfeederCard extends HTMLElement {
     svg.appendChild(bgCircle);
 
     if (schedules.length > 0) {
-      const gap = 4;
+      const gap = 8;
       const totalGap = gap * schedules.length;
       const availableDeg = 360 - totalGap;
       const segmentDeg = availableDeg / schedules.length;
@@ -948,7 +948,7 @@ class PetfeederCard extends HTMLElement {
     const contentBg = this._hexToRgba(contentColor, contentOpacity);
 
     const style = `
-      :host{display:block;box-sizing:border-box;padding:0;max-width:800px;margin:0 auto;font-family:var(--paper-font-body1_-_font-family, Roboto, sans-serif)}
+      :host{display:block;box-sizing:border-box;padding:0;max-width:800px;margin:0 auto;font-family:Roboto, sans-serif}
       .card{border-radius:12px;overflow:hidden;background:var(--ha-card-background, #fff);box-shadow:var(--ha-card-box-shadow, 0 2px 6px rgba(0,0,0,0.1));display:flex;flex-direction:column}
       .card-header{background:${headerBg};padding:20px 16px 0;text-align:center;position:relative}
       .pet-name{font-size:16px;font-weight:500;color:var(--primary-text-color,#333);display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:4px}
