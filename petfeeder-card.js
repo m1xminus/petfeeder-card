@@ -326,12 +326,24 @@ class PetfeederCard extends HTMLElement {
     schedules.forEach((sched, idx) => {
       const item = document.createElement('div');
       item.className = 'schedule-item' + (sched.enabled ? '' : ' disabled');
-      item.style.cssText = 'cursor:pointer;display:flex;align-items:center;gap:12px';
+      item.style.cursor = 'pointer';
 
       const timeline = document.createElement('div');
       timeline.className = 'timeline-marker';
       const dot = document.createElement('div');
       dot.className = 'timeline-dot';
+      
+      // Determine dot color based on schedule status
+      const scheduleTime = new Date(now);
+      scheduleTime.setHours(sched.hour, sched.minute, 0, 0);
+      const isSchedulePassed = now >= scheduleTime;
+
+      if (isSchedulePassed) {
+        dot.style.backgroundColor = hasError ? '#ff6b6b' : '#4db6ac';
+      } else {
+        dot.style.backgroundColor = '#ccc';
+      }
+      
       if (idx < schedules.length - 1) {
         const line = document.createElement('div');
         line.className = 'timeline-line';
@@ -355,24 +367,9 @@ class PetfeederCard extends HTMLElement {
         dosesDiv.textContent = `${sched.doses} Portions (Approx. ${sched.grams}g)`;
       }
 
-      // Status indicator (green for success, red for error)
-      const statusDiv = document.createElement('div');
-      statusDiv.style.cssText = 'width:12px;height:12px;border-radius:50%;flex-shrink:0;margin-left:auto';
-      
-      const scheduleTime = new Date(now);
-      scheduleTime.setHours(sched.hour, sched.minute, 0, 0);
-      const isSchedulePassed = now >= scheduleTime;
-
-      if (isSchedulePassed) {
-        statusDiv.style.backgroundColor = hasError ? '#ff6b6b' : '#4db6ac';
-      } else {
-        statusDiv.style.backgroundColor = '#ccc';
-      }
-
       item.appendChild(timeline);
       item.appendChild(timeDiv);
       item.appendChild(dosesDiv);
-      item.appendChild(statusDiv);
 
       item.addEventListener('click', () => this._openSchedulePopup(sched));
 
@@ -561,6 +558,16 @@ class PetfeederCard extends HTMLElement {
         nameDiv.className = 'left-status-name';
         nameDiv.textContent = item.name;
         itemEl.appendChild(nameDiv);
+      }
+
+      if (item.show_state !== false && item.entity && this._hass) {
+        const stateDiv = document.createElement('div');
+        stateDiv.className = 'left-status-state';
+        const st = this._hass.states[item.entity];
+        if (st) {
+          stateDiv.textContent = st.state;
+        }
+        itemEl.appendChild(stateDiv);
       }
 
       container.appendChild(itemEl);
@@ -801,9 +808,10 @@ class PetfeederCard extends HTMLElement {
       .header-center{flex:1;display:flex;flex-direction:column;align-items:center;padding:0 12px}
       .header-right{flex:0 0 120px;display:flex;flex-direction:column;gap:4px;align-items:stretch;padding:8px 4px}
       .left-status-panel{display:flex;flex-direction:column;gap:8px;width:100%}
-      .left-status-item{display:flex;flex-direction:column;align-items:center;gap:4px;padding:8px;background:var(--secondary-background-color,#f5f5f5);border-radius:6px;border:1px solid var(--divider-color,#e0e0e0)}
+      .left-status-item{display:flex;flex-direction:column;align-items:center;gap:2px;padding:6px 8px;background:transparent;border-radius:6px;border:none}
       .left-status-icon{font-size:28px;color:#888;display:flex;align-items:center;justify-content:center}
-      .left-status-name{font-size:10px;color:var(--secondary-text-color,#888);text-align:center;word-break:break-word;max-width:80px}
+      .left-status-name{font-size:11px;color:var(--secondary-text-color,#888);text-align:center;word-break:break-word;max-width:80px;font-weight:500}
+      .left-status-state{font-size:10px;color:var(--secondary-text-color,#888);text-align:center}
       .dial-container{position:relative;width:200px;height:200px;margin:0 auto}
       .dial-center{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center}
       .dial-grams{font-size:48px;font-weight:300;color:var(--primary-text-color,#333);line-height:1}
@@ -812,7 +820,13 @@ class PetfeederCard extends HTMLElement {
       .tab-btn{width:100%;padding:10px 8px;border:none;background:var(--secondary-background-color,#f5f5f5);color:var(--secondary-text-color,#888);font-size:11px;font-weight:500;cursor:pointer;transition:all 0.2s;border-radius:6px;text-align:center;white-space:nowrap;border:1px solid var(--divider-color,#e0e0e0)}
       .tab-btn:hover{background:var(--ha-card-background,#fff);border-color:${accentColor}}
       .tab-btn.active{color:${accentColor};background:var(--ha-card-background,#fff);border-color:${accentColor};font-weight:600}
-      .tab-content-area{background:${contentBg};padding:16px;border-top:1px solid var(--divider-color,#e0e0e0);min-height:60px}
+      .tab-content-area{background:${contentBg};padding:16px;border-top:1px solid var(--divider-color,#e0e0e0);min-height:60px;animation:slideUp 0.4s ease-out;position:relative;display:none}
+      .tab-content-area.active{display:block}
+      @keyframes slideUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
+      @keyframes slideDown{from{opacity:1;transform:translateY(0)}to{opacity:0;transform:translateY(20px)}}
+      .tab-content-close-btn{position:absolute;top:12px;right:12px;width:32px;height:32px;border:none;background:transparent;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--secondary-text-color,#888);border-radius:6px;transition:all 0.2s}
+      .tab-content-close-btn:hover{background:var(--divider-color,#e0e0e0);color:var(--primary-text-color,#333)}
+      .tab-content-close-btn ha-icon{font-size:20px}
       .schedule-section{display:none}
       .schedule-section.active{display:block}
       .schedule-item{display:flex;align-items:center;gap:12px;padding:10px 8px;border-radius:8px;transition:background 0.15s}
@@ -950,7 +964,20 @@ class PetfeederCard extends HTMLElement {
 
     // --- Tab Content Area (below header) ---
     const tabContentArea = document.createElement('div');
-    tabContentArea.className = 'tab-content-area';
+    tabContentArea.className = 'tab-content-area' + (this._activeTab ? ' active' : '');
+
+    // Close button
+    const closeBtn = document.createElement('button');
+    closeBtn.className = 'tab-content-close-btn';
+    closeBtn.innerHTML = '<ha-icon icon="mdi:chevron-up"></ha-icon>';
+    closeBtn.addEventListener('click', () => {
+      tabContentArea.style.animation = 'slideDown 0.4s ease-out forwards';
+      setTimeout(() => {
+        this._activeTab = null;
+        this.render();
+      }, 400);
+    });
+    tabContentArea.appendChild(closeBtn);
 
     // Schedules tab content
     const schedTab = document.createElement('div');
@@ -1297,6 +1324,7 @@ class PetfeederCardEditor extends HTMLElement {
           icon: '',
           show_name: true,
           show_icon: true,
+          show_state: true,
           color_map: []
         });
         this._dispatch();
@@ -1373,6 +1401,26 @@ class PetfeederCardEditor extends HTMLElement {
           showIconRow.appendChild(showIconLabel);
           showIconRow.appendChild(showIconToggle);
           card.appendChild(showIconRow);
+
+          // Show State toggle
+          const showStateRow = document.createElement('div');
+          showStateRow.className = 'popup-row';
+          showStateRow.style.cssText = 'margin-bottom:12px';
+          const showStateLabel = document.createElement('label');
+          showStateLabel.className = 'pf-field-label';
+          showStateLabel.textContent = 'Show State';
+          showStateLabel.style.cssText = 'margin:0';
+          const showStateToggle = document.createElement('div');
+          showStateToggle.className = 'toggle' + (item.show_state !== false ? ' on' : '');
+          showStateToggle.innerHTML = '<div class="toggle-thumb"></div>';
+          showStateToggle.addEventListener('click', () => {
+            this._config.left_status[idx].show_state = !this._config.left_status[idx].show_state;
+            showStateToggle.classList.toggle('on');
+            this._dispatch();
+          });
+          showStateRow.appendChild(showStateLabel);
+          showStateRow.appendChild(showStateToggle);
+          card.appendChild(showStateRow);
 
           // Color mapping
           card.appendChild(this._buildColorMapping(idx, true));
