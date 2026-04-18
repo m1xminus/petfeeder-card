@@ -3,7 +3,6 @@ class PetfeederCard extends HTMLElement {
     super();
     this._config = {};
     this._shadow = this.attachShadow({ mode: 'open' });
-    this._selectedMenu = null;
   }
 
   setConfig(config) {
@@ -14,14 +13,15 @@ class PetfeederCard extends HTMLElement {
       status: [null, null, null, null],
       menu: [],
       last_feed_entity: null,
+      today_grams_entity: null,
       schedules: [],
       status_label: 'status:',
       header_color: '#ffffff',
       header_opacity: 1,
       content_color: '#fafafa',
-      content_opacity: 1
+      content_opacity: 1,
+      accent_color: '#4db6ac'
     }, config || {});
-    this._selectedMenu = 'Info';
     this.render();
   }
 
@@ -39,20 +39,10 @@ class PetfeederCard extends HTMLElement {
       image: '/local/pet.jpg',
       status: [null, null, null, null],
       status_label: 'status:',
-      last_feed_entity: 'sensor.last_feeding',
-      schedules: [
-        {
-          hour_entity: 'number.schedule_1_hour',
-          minute_entity: 'number.schedule_1_minute',
-          doses_entity: 'number.schedule_1_doses',
-          enabled_entity: 'switch.schedule_1_enabled',
-          info_entity: 'sensor.schedule_1_info'
-        }
-      ],
-      menu: [
-        { name: 'Logs', content: 'Feeding logs' },
-        { name: 'Settings', content: 'Settings' }
-      ]
+      last_feed_entity: '',
+      today_grams_entity: '',
+      schedules: [],
+      menu: []
     };
   }
 
@@ -61,70 +51,401 @@ class PetfeederCard extends HTMLElement {
     this.render();
   }
 
+  // --- Schedule data helpers ---
+
+  _getScheduleData() {
+    const schedules = [];
+    (this._config.schedules || []).forEach((schedule, idx) => {
+      if (!schedule || !this._hass) return;
+      const hourState = schedule.hour_entity ? this._hass.states[schedule.hour_entity] : null;
+      const minuteState = schedule.minute_entity ? this._hass.states[schedule.minute_entity] : null;
+      const dosesState = schedule.doses_entity ? this._hass.states[schedule.doses_entity] : null;
+      const enabledState = schedule.enabled_entity ? this._hass.states[schedule.enabled_entity] : null;
+      const infoState = schedule.info_entity ? this._hass.states[schedule.info_entity] : null;
+
+      const h = hourState ? parseInt(hourState.state, 10) : NaN;
+      const m = minuteState ? parseInt(minuteState.state, 10) : NaN;
+      const doses = dosesState ? parseInt(dosesState.state, 10) : 0;
+      const enabled = enabledState ? enabledState.state === 'on' : true;
+      const gramsPerDose = dosesState && dosesState.attributes && dosesState.attributes.unit_of_measurement
+        ? parseInt(dosesState.attributes.unit_of_measurement) || 5 : 5;
+
+      schedules.push({
+        index: idx,
+        hour: h,
+        minute: m,
+        doses: doses,
+        grams: doses * gramsPerDose,
+        enabled: enabled,
+        info: infoState ? infoState.state : null,
+        config: schedule
+      });
+    });
+    return schedules;
+  }
+
+  _computeNextSchedule() {
+    const now = new Date();
+    const candidates = [];
+    this._getScheduleData().forEach(s => {
+      if (!s.enabled || isNaN(s.hour) || isNaN(s.minute)) return;
+      let dt = new Date(now);
+      dt.setHours(s.hour, s.minute, 0, 0);
+      if (dt <= now) {
+        dt = new Date(now);
+        dt.setDate(dt.getDate() + 1);
+        dt.setHours(s.hour, s.minute, 0, 0);
+      }
+      candidates.push({ datetime: dt, schedule: s });
+    });
+    candidates.sort((a, b) => a.datetime - b.datetime);
+    return candidates.length > 0 ? candidates[0] : null;
+  }
+
+  _getTodayGrams() {
+    if (!this._config.today_grams_entity || !this._hass) return 0;
+    const st = this._hass.states[this._config.today_grams_entity];
+    return st ? parseFloat(st.state) || 0 : 0;
+  }
+
+  _getTotalExpectedGrams() {
+    let total = 0;
+    this._getScheduleData().forEach(s => {
+      if (s.enabled) total += s.grams;
+    });
+    return total || 1;
+  }
+
+  // --- SVG Dial ---
+
+  _renderDial() {
+    const todayGrams = this._getTodayGrams();
+    const schedules = this._getScheduleData().filter(s => s.enabled);
+    const totalExpected = this._getTotalExpectedGrams();
+    const accentColor = this._config.accent_color || '#4db6ac';
+
+    const size = 200;
+    const cx = size / 2;
+    const cy = size / 2;
+    const radius = 80;
+    const strokeWidth = 12;
+    const circumference = 2 * Math.PI * radius;
+
+    const container = document.createElement('div');
+    container.className = 'dial-container';
+
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('viewBox', `0 0 ${size} ${size}`);
+    svg.setAttribute('width', '200');
+    svg.setAttribute('height', '200');
+
+    // Background track
+    const bgCircle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+    bgCircle.setAttribute('cx', cx);
+    bgCircle.setAttribute('cy', cy);
+    bgCircle.setAttribute('r', radius);
+    bgCircle.setAttribute('fill', 'none');
+    bgCircle.setAttribute('stroke', 'var(--divider-color, #e0e0e0)');
+    bgCircle.setAttribute('stroke-width', '14');
+    bgCircle.setAttribute('opacity', '0.25');
+    svg.appendChild(bgCircle);
+
+    if (schedules.length > 0) {
+      const gap = 4;
+      const totalGap = gap * schedules.length;
+      const availableDeg = 360 - totalGap;
+      let currentAngle = -90;
+      let gramsRemaining = todayGrams;
+
+      schedules.forEach((sched) => {
+        const segmentDeg = (sched.grams / totalExpected) * availableDeg;
+        const segmentRad = (segmentDeg / 360) * circumference;
+        const offset = -((currentAngle + 90) / 360) * circumference;
+
+        // Background segment
+        const bgSeg = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        bgSeg.setAttribute('cx', cx);
+        bgSeg.setAttribute('cy', cy);
+        bgSeg.setAttribute('r', radius);
+        bgSeg.setAttribute('fill', 'none');
+        bgSeg.setAttribute('stroke', 'var(--divider-color, #ddd)');
+        bgSeg.setAttribute('stroke-width', strokeWidth);
+        bgSeg.setAttribute('stroke-dasharray', `${segmentRad} ${circumference}`);
+        bgSeg.setAttribute('stroke-dashoffset', `${offset}`);
+        bgSeg.setAttribute('stroke-linecap', 'round');
+        bgSeg.setAttribute('opacity', '0.15');
+        svg.appendChild(bgSeg);
+
+        // Filled portion
+        const filled = Math.min(gramsRemaining, sched.grams);
+        const filledRatio = sched.grams > 0 ? filled / sched.grams : 0;
+        gramsRemaining -= filled;
+
+        if (filledRatio > 0) {
+          const filledRad = filledRatio * segmentRad;
+          const fillSeg = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+          fillSeg.setAttribute('cx', cx);
+          fillSeg.setAttribute('cy', cy);
+          fillSeg.setAttribute('r', radius);
+          fillSeg.setAttribute('fill', 'none');
+          fillSeg.setAttribute('stroke', accentColor);
+          fillSeg.setAttribute('stroke-width', strokeWidth);
+          fillSeg.setAttribute('stroke-dasharray', `${filledRad} ${circumference}`);
+          fillSeg.setAttribute('stroke-dashoffset', `${offset}`);
+          fillSeg.setAttribute('stroke-linecap', 'round');
+          svg.appendChild(fillSeg);
+        }
+
+        currentAngle += segmentDeg + gap;
+      });
+    } else {
+      // No schedules: show simple progress ring
+      const ratio = Math.min(todayGrams / 100, 1);
+      const filledRad = ratio * circumference;
+      const fillCircle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+      fillCircle.setAttribute('cx', cx);
+      fillCircle.setAttribute('cy', cy);
+      fillCircle.setAttribute('r', radius);
+      fillCircle.setAttribute('fill', 'none');
+      fillCircle.setAttribute('stroke', accentColor);
+      fillCircle.setAttribute('stroke-width', strokeWidth);
+      fillCircle.setAttribute('stroke-dasharray', `${filledRad} ${circumference}`);
+      fillCircle.setAttribute('stroke-dashoffset', `${circumference * 0.25}`);
+      fillCircle.setAttribute('stroke-linecap', 'round');
+      svg.appendChild(fillCircle);
+    }
+
+    container.appendChild(svg);
+
+    // Center text
+    const centerText = document.createElement('div');
+    centerText.className = 'dial-center';
+    const gramsNum = document.createElement('div');
+    gramsNum.className = 'dial-grams';
+    gramsNum.textContent = Math.round(todayGrams);
+    const gramsLabel = document.createElement('div');
+    gramsLabel.className = 'dial-label';
+    gramsLabel.textContent = `Approx. ${Math.round(todayGrams)}g`;
+    centerText.appendChild(gramsNum);
+    centerText.appendChild(gramsLabel);
+    container.appendChild(centerText);
+
+    return container;
+  }
+
+  // --- Schedule Timeline ---
+
+  _renderScheduleTimeline() {
+    const container = document.createElement('div');
+    container.className = 'schedule-section';
+
+    const schedules = this._getScheduleData();
+
+    if (schedules.length === 0) {
+      const empty = document.createElement('div');
+      empty.style.cssText = 'text-align:center;color:#999;font-size:13px;padding:16px';
+      empty.textContent = 'No schedules configured';
+      container.appendChild(empty);
+      return container;
+    }
+
+    schedules.forEach((sched, idx) => {
+      const item = document.createElement('div');
+      item.className = 'schedule-item' + (sched.enabled ? '' : ' disabled');
+      item.style.cursor = 'pointer';
+
+      const timeline = document.createElement('div');
+      timeline.className = 'timeline-marker';
+      const dot = document.createElement('div');
+      dot.className = 'timeline-dot';
+      if (idx < schedules.length - 1) {
+        const line = document.createElement('div');
+        line.className = 'timeline-line';
+        timeline.appendChild(line);
+      }
+      timeline.appendChild(dot);
+
+      const timeDiv = document.createElement('div');
+      timeDiv.className = 'schedule-time';
+      if (!isNaN(sched.hour) && !isNaN(sched.minute)) {
+        timeDiv.textContent = `${String(sched.hour).padStart(2, '0')}:${String(sched.minute).padStart(2, '0')}`;
+      } else {
+        timeDiv.textContent = '--:--';
+      }
+
+      const dosesDiv = document.createElement('div');
+      dosesDiv.className = 'schedule-doses';
+      if (sched.info) {
+        dosesDiv.textContent = sched.info;
+      } else {
+        dosesDiv.textContent = `${sched.doses} Portions (Approx. ${sched.grams}g)`;
+      }
+
+      item.appendChild(timeline);
+      item.appendChild(timeDiv);
+      item.appendChild(dosesDiv);
+
+      item.addEventListener('click', () => this._openSchedulePopup(sched));
+
+      container.appendChild(item);
+    });
+
+    return container;
+  }
+
+  // --- Edit Popup ---
+
+  _openSchedulePopup(sched) {
+    if (!this._hass) return;
+
+    const existing = this._shadow.querySelector('.popup-overlay');
+    if (existing) existing.remove();
+
+    const overlay = document.createElement('div');
+    overlay.className = 'popup-overlay';
+    overlay.addEventListener('click', e => {
+      if (e.target === overlay) overlay.remove();
+    });
+
+    const popup = document.createElement('div');
+    popup.className = 'popup';
+
+    const popupTitle = document.createElement('div');
+    popupTitle.className = 'popup-title';
+    popupTitle.textContent = `Schedule ${sched.index + 1}`;
+    popup.appendChild(popupTitle);
+
+    // Hour
+    popup.appendChild(this._popupRow('Hour', 'number', isNaN(sched.hour) ? '' : sched.hour, '0', '23'));
+
+    // Minute
+    popup.appendChild(this._popupRow('Minute', 'number', isNaN(sched.minute) ? '' : sched.minute, '0', '59'));
+
+    // Doses
+    popup.appendChild(this._popupRow('Doses', 'number', sched.doses || 1, '1', '50'));
+
+    // Enabled toggle
+    const enabledRow = document.createElement('div');
+    enabledRow.className = 'popup-row';
+    const enabledLabel = document.createElement('div');
+    enabledLabel.className = 'popup-label';
+    enabledLabel.textContent = 'Enabled';
+    const toggle = document.createElement('div');
+    toggle.className = 'toggle' + (sched.enabled ? ' on' : '');
+    toggle.innerHTML = '<div class="toggle-thumb"></div>';
+    let toggleState = sched.enabled;
+    toggle.addEventListener('click', () => {
+      toggleState = !toggleState;
+      toggle.classList.toggle('on', toggleState);
+    });
+    enabledRow.appendChild(enabledLabel);
+    enabledRow.appendChild(toggle);
+    popup.appendChild(enabledRow);
+
+    // Save
+    const saveBtn = document.createElement('button');
+    saveBtn.className = 'popup-save';
+    saveBtn.textContent = 'Save';
+    saveBtn.addEventListener('click', () => {
+      const cfg = sched.config;
+      const inputs = popup.querySelectorAll('.popup-input');
+      if (cfg.hour_entity) {
+        this._hass.callService('number', 'set_value', {
+          entity_id: cfg.hour_entity,
+          value: parseInt(inputs[0].value, 10)
+        });
+      }
+      if (cfg.minute_entity) {
+        this._hass.callService('number', 'set_value', {
+          entity_id: cfg.minute_entity,
+          value: parseInt(inputs[1].value, 10)
+        });
+      }
+      if (cfg.doses_entity) {
+        this._hass.callService('number', 'set_value', {
+          entity_id: cfg.doses_entity,
+          value: parseInt(inputs[2].value, 10)
+        });
+      }
+      if (cfg.enabled_entity) {
+        this._hass.callService('switch', toggleState ? 'turn_on' : 'turn_off', {
+          entity_id: cfg.enabled_entity
+        });
+      }
+      overlay.remove();
+    });
+    popup.appendChild(saveBtn);
+
+    // Close
+    const closeBtn = document.createElement('div');
+    closeBtn.className = 'popup-close';
+    closeBtn.textContent = '\u2715';
+    closeBtn.addEventListener('click', () => overlay.remove());
+    popup.appendChild(closeBtn);
+
+    overlay.appendChild(popup);
+    this._shadow.appendChild(overlay);
+  }
+
+  _popupRow(label, type, value, min, max) {
+    const row = document.createElement('div');
+    row.className = 'popup-row';
+    const lab = document.createElement('div');
+    lab.className = 'popup-label';
+    lab.textContent = label;
+    const input = document.createElement('input');
+    input.type = type;
+    input.className = 'popup-input';
+    input.min = min;
+    input.max = max;
+    input.value = value;
+    row.appendChild(lab);
+    row.appendChild(input);
+    return row;
+  }
+
+  // --- Status Row (bottom) ---
+
   _renderStatuses() {
     const container = document.createElement('div');
     container.className = 'status-row';
-    (this._config.status || []).forEach((s, idx) => {
-      // Only render if there's name OR icon configured
-      if (!s || (!s.icon && !s.name)) {
-        return;
-      }
+    (this._config.status || []).forEach((s) => {
+      if (!s || (!s.icon && !s.name)) return;
       const item = document.createElement('div');
       item.className = 'status-item';
-      
+
       let color = s.color || '#888';
       if (s.entity && this._hass) {
         const st = this._hass.states[s.entity];
         if (st) {
-          // Check color_map array for matching state
           if (s.color_map && Array.isArray(s.color_map)) {
             const mapping = s.color_map.find(m => m.state === st.state);
-            if (mapping) {
-              color = mapping.color;
-            }
-          } else if (typeof s.color_map === 'string') {
-            // Fallback for legacy JSON format
-            try {
-              const map = JSON.parse(s.color_map);
-              if (map[st.state]) color = map[st.state];
-            } catch (e) {}
+            if (mapping) color = mapping.color;
           } else {
-            // Default color logic if no mapping
-            if (st.state === 'on' || st.state === 'home' || st.state === 'connected') {
-              color = '#4caf50';
-            } else if (st.state === 'off' || st.state === 'unavailable' || st.state === 'disconnected') {
-              color = '#f44336';
-            }
+            if (st.state === 'on' || st.state === 'home') color = '#4caf50';
+            else if (st.state === 'off' || st.state === 'unavailable') color = '#f44336';
           }
         }
       }
 
-      // Only display circle icon if icon is configured
-      if (s.icon) {
-        const dot = document.createElement('div');
-        dot.className = 'dot';
-        dot.style.background = color;
-        dot.style.display = 'flex';
-        dot.style.alignItems = 'center';
-        dot.style.justifyContent = 'center';
-        
-        // Use ha-icon component which supports MDI
-        const haIcon = document.createElement('ha-icon');
-        haIcon.setAttribute('icon', s.icon);
-        haIcon.style.color = '#fff';
-        haIcon.style.fontSize = '16px';
-        haIcon.style.width = '16px';
-        haIcon.style.height = '16px';
-        dot.appendChild(haIcon);
-        item.appendChild(dot);
-      }
-
-      // Display name/label if available
       if (s.name) {
         const nameDiv = document.createElement('div');
-        nameDiv.style.cssText = 'font-size:13px;color:#666;margin-left:8px;font-weight:500;';
+        nameDiv.className = 'status-label';
         nameDiv.textContent = s.name;
         item.appendChild(nameDiv);
+      }
+
+      if (s.icon) {
+        const dot = document.createElement('div');
+        dot.className = 'status-dot';
+        dot.style.borderColor = color;
+        dot.style.color = color;
+        const haIcon = document.createElement('ha-icon');
+        haIcon.setAttribute('icon', s.icon);
+        haIcon.style.width = '20px';
+        haIcon.style.height = '20px';
+        dot.appendChild(haIcon);
+        item.appendChild(dot);
       }
 
       container.appendChild(item);
@@ -132,291 +453,123 @@ class PetfeederCard extends HTMLElement {
     return container;
   }
 
-  _renderHeader() {
-    const header = document.createElement('div');
-    header.className = 'header';
-
-    const left = document.createElement('div');
-    left.className = 'left';
-    const statusTitle = document.createElement('div');
-    statusTitle.className = 'status-title';
-    statusTitle.textContent = this._config.status_label || 'status:';
-    left.appendChild(statusTitle);
-    left.appendChild(this._renderStatuses());
-
-    const center = document.createElement('div');
-    center.className = 'center';
-    const img = document.createElement('img');
-    img.className = 'pet-img';
-    img.src = this._config.image || '';
-    img.alt = 'Pet picture';
-    center.appendChild(img);
-
-    const right = document.createElement('div');
-    right.className = 'right';
-    const menuWrap = document.createElement('div');
-    menuWrap.className = 'menu-wrap';
-    const select = document.createElement('select');
-    select.className = 'menu-select';
-    
-    // Always add Info tab first
-    const infoOpt = document.createElement('option');
-    infoOpt.value = 'Info';
-    infoOpt.textContent = 'Info';
-    select.appendChild(infoOpt);
-    
-    // Then add custom menu items
-    (this._config.menu || []).forEach(m => {
-      const opt = document.createElement('option');
-      opt.value = m.name;
-      opt.textContent = m.name;
-      select.appendChild(opt);
-    });
-    
-    select.value = this._selectedMenu || 'Info';
-    select.addEventListener('change', e => {
-      this._selectedMenu = e.target.value;
-      this.render();
-    });
-    menuWrap.appendChild(select);
-    right.appendChild(menuWrap);
-
-    header.appendChild(left);
-    header.appendChild(center);
-    header.appendChild(right);
-    return header;
-  }
-
-  _formatDateTime(dt) {
-    if (!dt) return '';
-    const d = new Date(dt);
-    if (isNaN(d)) return dt;
-    return d.toLocaleString();
-  }
-
-  _computeNextSchedule() {
-    const now = new Date();
-    const candidates = [];
-
-    (this._config.schedules || []).forEach(schedule => {
-      if (!schedule || !this._hass) return;
-
-      // Check if schedule is enabled
-      if (schedule.enabled_entity) {
-        const enabledState = this._hass.states[schedule.enabled_entity];
-        if (!enabledState || enabledState.state === 'off') return;
-      }
-
-      // Get hour and minute from entities
-      const hourState = schedule.hour_entity ? this._hass.states[schedule.hour_entity] : null;
-      const minuteState = schedule.minute_entity ? this._hass.states[schedule.minute_entity] : null;
-
-      if (hourState && minuteState) {
-        const h = parseInt(hourState.state, 10);
-        const m = parseInt(minuteState.state, 10);
-
-        if (isNaN(h) || isNaN(m)) return;
-
-        // Create datetime for today at this time
-        let dt = new Date(now);
-        dt.setHours(h, m, 0, 0);
-
-        // If time has passed today, try tomorrow
-        if (dt <= now) {
-          dt = new Date(now);
-          dt.setDate(dt.getDate() + 1);
-          dt.setHours(h, m, 0, 0);
-        }
-
-        candidates.push({ datetime: dt, schedule });
-      }
-    });
-
-    // Sort by datetime and return the earliest future one
-    candidates.sort((a, b) => a.datetime - b.datetime);
-    return candidates.length > 0 ? candidates[0] : null;
-  }
-
-  _renderSchedules() {
-    const container = document.createElement('div');
-    container.style.marginTop = '12px';
-
-    if (!this._config.schedules || this._config.schedules.length === 0) {
-      const empty = document.createElement('div');
-      empty.style.color = '#999';
-      empty.style.fontSize = '12px';
-      empty.textContent = 'No schedules configured';
-      container.appendChild(empty);
-      return container;
-    }
-
-    (this._config.schedules || []).forEach((schedule, idx) => {
-      if (!schedule) return;
-
-      const scheduleItem = document.createElement('div');
-      scheduleItem.style.cssText = 'border-bottom:1px solid #eee;padding:8px 0;';
-
-      const timeRow = document.createElement('div');
-      timeRow.className = 'row';
-      const timeLabel = document.createElement('div');
-      timeLabel.className = 'label';
-      timeLabel.textContent = `Schedule ${idx + 1}:`;
-      const timeValue = document.createElement('div');
-      timeValue.className = 'value';
-
-      // Display time and info from entities
-      if (this._hass && schedule.info_entity) {
-        const infoState = this._hass.states[schedule.info_entity];
-        if (infoState) {
-          timeValue.textContent = infoState.state;
-        } else {
-          timeValue.textContent = '—';
-        }
-      } else {
-        // Fallback: show hour:minute from entities
-        const hourState = this._hass && schedule.hour_entity ? this._hass.states[schedule.hour_entity] : null;
-        const minuteState = this._hass && schedule.minute_entity ? this._hass.states[schedule.minute_entity] : null;
-        const dosesState = this._hass && schedule.doses_entity ? this._hass.states[schedule.doses_entity] : null;
-
-        let text = '—';
-        if (hourState && minuteState) {
-          const h = String(hourState.state).padStart(2, '0');
-          const m = String(minuteState.state).padStart(2, '0');
-          text = `${h}:${m}`;
-          if (dosesState) {
-            text += ` (${dosesState.state}x doses)`;
-          }
-        }
-        timeValue.textContent = text;
-      }
-
-      timeRow.appendChild(timeLabel);
-      timeRow.appendChild(timeValue);
-      scheduleItem.appendChild(timeRow);
-      container.appendChild(scheduleItem);
-    });
-
-    return container;
-  }
-
-  _renderContent() {
-    const content = document.createElement('div');
-    content.className = 'content';
-
-    const lastFeedRow = document.createElement('div');
-    lastFeedRow.className = 'row';
-    const lfLabel = document.createElement('div');
-    lfLabel.className = 'label';
-    lfLabel.textContent = 'Last feed:';
-    const lfValue = document.createElement('div');
-    lfValue.className = 'value';
-    if (this._config.last_feed_entity && this._hass) {
-      const st = this._hass.states[this._config.last_feed_entity];
-      if (st) lfValue.textContent = this._formatDateTime(st.state);
-      else lfValue.textContent = '—';
-    } else if (this._config.last_feed) {
-      lfValue.textContent = this._formatDateTime(this._config.last_feed);
-    } else {
-      lfValue.textContent = '—';
-    }
-    lastFeedRow.appendChild(lfLabel);
-    lastFeedRow.appendChild(lfValue);
-
-    const nextRow = document.createElement('div');
-    nextRow.className = 'row';
-    const nsLabel = document.createElement('div');
-    nsLabel.className = 'label';
-    nsLabel.textContent = 'Next Schedule:';
-    const nsValue = document.createElement('div');
-    nsValue.className = 'value';
-    const nextSchedule = this._computeNextSchedule();
-    if (nextSchedule && this._hass) {
-      const hourState = this._hass.states[nextSchedule.schedule.hour_entity];
-      const minuteState = this._hass.states[nextSchedule.schedule.minute_entity];
-      const dosesState = this._hass.states[nextSchedule.schedule.doses_entity];
-      const infoState = this._hass.states[nextSchedule.schedule.info_entity];
-
-      let text = '';
-      if (infoState) {
-        text = infoState.state;
-      } else if (hourState && minuteState) {
-        const h = String(hourState.state).padStart(2, '0');
-        const m = String(minuteState.state).padStart(2, '0');
-        text = `${h}:${m}`;
-        if (dosesState) {
-          text += ` (${dosesState.state}x)`;
-        }
-      }
-      nsValue.textContent = text || '—';
-    } else {
-      nsValue.textContent = '—';
-    }
-    nextRow.appendChild(nsLabel);
-    nextRow.appendChild(nsValue);
-
-    content.appendChild(lastFeedRow);
-    content.appendChild(nextRow);
-
-    const menuContent = document.createElement('div');
-    menuContent.className = 'menu-content';
-    const sel = this._selectedMenu;
-
-    // Check if Info tab is selected
-    if (sel === 'Info') {
-      menuContent.appendChild(this._renderSchedules());
-    } else {
-      // Custom menu item
-      const menu = (this._config.menu || []).find(m => m.name === sel) || (this._config.menu && this._config.menu[0]);
-      menuContent.textContent = menu ? menu.content : '';
-    }
-
-    content.appendChild(menuContent);
-    return content;
-  }
+  // --- Main Render ---
 
   render() {
     if (!this._shadow) return;
-    
+
     const headerColor = this._config.header_color || '#fff';
-    const headerOpacity = (this._config.header_opacity !== undefined ? this._config.header_opacity : 1);
+    const headerOpacity = this._config.header_opacity !== undefined ? this._config.header_opacity : 1;
     const contentColor = this._config.content_color || '#fafafa';
-    const contentOpacity = (this._config.content_opacity !== undefined ? this._config.content_opacity : 1);
-    
+    const contentOpacity = this._config.content_opacity !== undefined ? this._config.content_opacity : 1;
+    const accentColor = this._config.accent_color || '#4db6ac';
+
     const headerBg = this._hexToRgba(headerColor, headerOpacity);
     const contentBg = this._hexToRgba(contentColor, contentOpacity);
-    
+
     const style = `
-      :host{display:block;box-sizing:border-box;padding:8px;max-width:420px;margin:8px auto;font-family:inherit}
-      .card{border:1px solid #ddd;border-radius:6px;overflow:hidden;background:#fff}
-      .header{display:flex;padding:12px;align-items:center;gap:12px;background:${headerBg}}
-      .left{flex:1}
-      .center{width:120px;text-align:center}
-      .right{width:120px;text-align:right}
-      .pet-img{width:96px;height:96px;border-radius:50%;object-fit:cover;border:3px solid #eee}
-      .status-row{display:flex;flex-direction:column;gap:6px}
-      .status-item{display:flex;align-items:center;gap:6px}
-      .dot{width:24px;height:24px;border-radius:50%;flex-shrink:0}
-      .status-title{font-size:12px;color:#666;margin-bottom:6px}
-      .menu-wrap{display:flex;justify-content:flex-end}
-      .menu-select{padding:6px}
-      .content{padding:12px;border-top:1px solid #eee;background:${contentBg}}
-      .row{display:flex;gap:8px;padding:6px 0}
-      .label{width:120px;color:#444;font-weight:500}
-      .value{flex:1;color:#222}
-      .menu-content{margin-top:12px;padding:8px;background:rgba(0,0,0,0.03);border-radius:4px;min-height:60px}
-      @media (max-width:420px){:host{padding:6px}.center{width:86px}.right{width:86px}}
+      :host{display:block;box-sizing:border-box;padding:0;max-width:420px;margin:0 auto;font-family:var(--paper-font-body1_-_font-family, Roboto, sans-serif)}
+      .card{border-radius:12px;overflow:hidden;background:var(--ha-card-background, #fff);box-shadow:var(--ha-card-box-shadow, 0 2px 6px rgba(0,0,0,0.1))}
+      .card-header{background:${headerBg};padding:20px 16px 16px;text-align:center;position:relative}
+      .pet-name{font-size:16px;font-weight:500;color:var(--primary-text-color,#333);margin-bottom:4px;display:flex;align-items:center;justify-content:center;gap:8px}
+      .pet-name img{width:28px;height:28px;border-radius:50%;object-fit:cover}
+      .sub-label{font-size:12px;color:var(--secondary-text-color,#888);margin-bottom:16px}
+      .dial-container{position:relative;width:200px;height:200px;margin:0 auto}
+      .dial-center{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center}
+      .dial-grams{font-size:48px;font-weight:300;color:var(--primary-text-color,#333);line-height:1}
+      .dial-label{font-size:12px;color:var(--secondary-text-color,#888);margin-top:4px}
+      .next-schedule-row{margin-top:12px;font-size:13px;color:var(--secondary-text-color,#888);text-align:center}
+      .card-content{background:${contentBg};padding:16px}
+      .schedule-section{padding:0}
+      .schedule-item{display:flex;align-items:center;gap:12px;padding:10px 8px;border-radius:8px;transition:background 0.15s}
+      .schedule-item:hover{background:var(--secondary-background-color, rgba(0,0,0,.03))}
+      .schedule-item.disabled{opacity:0.4}
+      .timeline-marker{position:relative;width:16px;display:flex;flex-direction:column;align-items:center;flex-shrink:0;align-self:stretch}
+      .timeline-dot{width:10px;height:10px;border-radius:50%;background:${accentColor};flex-shrink:0;z-index:1;position:relative;margin-top:6px}
+      .timeline-line{position:absolute;top:16px;bottom:-10px;left:50%;width:2px;background:var(--divider-color, #ddd);transform:translateX(-50%)}
+      .schedule-time{font-size:16px;font-weight:500;color:var(--primary-text-color,#333);min-width:54px}
+      .schedule-doses{font-size:13px;color:var(--secondary-text-color,#888);flex:1;text-align:right}
+      .status-bar{display:flex;justify-content:space-around;padding:12px 8px;border-top:1px solid var(--divider-color,#eee);background:var(--ha-card-background,#fff)}
+      .status-row{display:flex;justify-content:space-around;width:100%}
+      .status-item{display:flex;flex-direction:column;align-items:center;gap:4px;min-width:60px}
+      .status-label{font-size:11px;color:var(--secondary-text-color,#888);text-transform:uppercase;letter-spacing:0.3px}
+      .status-dot{width:36px;height:36px;border-radius:50%;border:2px solid #ccc;display:flex;align-items:center;justify-content:center;background:transparent}
+      .popup-overlay{position:absolute;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:100;border-radius:12px}
+      .popup{background:var(--ha-card-background, #fff);border-radius:12px;padding:24px;min-width:260px;max-width:320px;position:relative;box-shadow:0 8px 32px rgba(0,0,0,0.2)}
+      .popup-title{font-size:18px;font-weight:500;color:var(--primary-text-color,#333);margin-bottom:20px;text-align:center}
+      .popup-row{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px}
+      .popup-label{font-size:14px;color:var(--primary-text-color,#333)}
+      .popup-input{width:80px;padding:8px 12px;border:1px solid var(--divider-color,#ddd);border-radius:8px;font-size:16px;text-align:center;background:var(--secondary-background-color,#f5f5f5);color:var(--primary-text-color,#333)}
+      .popup-input:focus{outline:none;border-color:${accentColor}}
+      .popup-save{width:100%;padding:12px;border:none;border-radius:8px;background:${accentColor};color:#fff;font-size:15px;font-weight:500;cursor:pointer;margin-top:8px}
+      .popup-save:hover{opacity:0.85}
+      .popup-close{position:absolute;top:12px;right:12px;width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--secondary-text-color,#888);font-size:16px}
+      .popup-close:hover{background:var(--secondary-background-color,#f5f5f5)}
+      .toggle{width:48px;height:26px;border-radius:13px;background:#ccc;position:relative;cursor:pointer;transition:background 0.2s}
+      .toggle.on{background:${accentColor}}
+      .toggle-thumb{width:22px;height:22px;border-radius:50%;background:#fff;position:absolute;top:2px;left:2px;transition:transform 0.2s;box-shadow:0 1px 3px rgba(0,0,0,0.2)}
+      .toggle.on .toggle-thumb{transform:translateX(22px)}
     `;
 
     this._shadow.innerHTML = '';
-    
     const st = document.createElement('style');
     st.textContent = style;
     this._shadow.appendChild(st);
 
     const wrap = document.createElement('div');
     wrap.className = 'card';
-    wrap.appendChild(this._renderHeader());
-    wrap.appendChild(this._renderContent());
+    wrap.style.position = 'relative';
+
+    // --- Header: pet name + dial ---
+    const header = document.createElement('div');
+    header.className = 'card-header';
+
+    const petName = document.createElement('div');
+    petName.className = 'pet-name';
+    if (this._config.image) {
+      const img = document.createElement('img');
+      img.src = this._config.image;
+      img.alt = '';
+      petName.appendChild(img);
+    }
+    const nameSpan = document.createElement('span');
+    nameSpan.textContent = this._config.title || 'Petfeeder';
+    petName.appendChild(nameSpan);
+    header.appendChild(petName);
+
+    const subLabel = document.createElement('div');
+    subLabel.className = 'sub-label';
+    subLabel.textContent = 'Portions dispensed today';
+    header.appendChild(subLabel);
+
+    header.appendChild(this._renderDial());
+
+    const nextRow = document.createElement('div');
+    nextRow.className = 'next-schedule-row';
+    const nextSchedule = this._computeNextSchedule();
+    if (nextSchedule) {
+      const s = nextSchedule.schedule;
+      nextRow.textContent = `Next: ${String(s.hour).padStart(2, '0')}:${String(s.minute).padStart(2, '0')} (${s.doses} portions)`;
+    } else {
+      nextRow.textContent = 'No upcoming schedules';
+    }
+    header.appendChild(nextRow);
+    wrap.appendChild(header);
+
+    // --- Content: schedule timeline ---
+    const content = document.createElement('div');
+    content.className = 'card-content';
+    content.appendChild(this._renderScheduleTimeline());
+    wrap.appendChild(content);
+
+    // --- Status bar (bottom) ---
+    const hasStatus = (this._config.status || []).some(s => s && (s.icon || s.name));
+    if (hasStatus) {
+      const statusBar = document.createElement('div');
+      statusBar.className = 'status-bar';
+      statusBar.appendChild(this._renderStatuses());
+      wrap.appendChild(statusBar);
+    }
 
     this._shadow.appendChild(wrap);
   }
@@ -556,6 +709,12 @@ class PetfeederCardEditor extends HTMLElement {
       // Last Feed Entity
       body.appendChild(this._buildHaEntityPicker('Last Feed Entity', this._config.last_feed_entity || '', v => {
         this._config.last_feed_entity = v || null;
+        this._dispatch();
+      }));
+
+      // Today Grams Entity
+      body.appendChild(this._buildHaEntityPicker('Today Grams Entity', this._config.today_grams_entity || '', v => {
+        this._config.today_grams_entity = v || null;
         this._dispatch();
       }));
 
@@ -787,6 +946,12 @@ class PetfeederCardEditor extends HTMLElement {
       // Content Opacity
       body.appendChild(this._buildSlider('Content Transparency', (this._config.content_opacity !== undefined ? this._config.content_opacity : 1), v => {
         this._config.content_opacity = parseFloat(v);
+        this._dispatch();
+      }));
+
+      // Accent Color
+      body.appendChild(this._buildColorInput('Accent Color', this._config.accent_color || '#4db6ac', v => {
+        this._config.accent_color = v;
         this._dispatch();
       }));
     }));
