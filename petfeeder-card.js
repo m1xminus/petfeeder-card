@@ -131,7 +131,7 @@ class PetfeederCard extends HTMLElement {
     left.className = 'left';
     const statusTitle = document.createElement('div');
     statusTitle.className = 'status-title';
-    statusTitle.textContent = 'status:';
+    statusTitle.textContent = this._config.status_label || 'status:';
     left.appendChild(statusTitle);
     left.appendChild(this._renderStatuses());
 
@@ -251,10 +251,18 @@ class PetfeederCard extends HTMLElement {
   render() {
     if (!this._shadow) return;
     
+    const headerColor = this._config.header_color || '#fff';
+    const headerOpacity = (this._config.header_opacity !== undefined ? this._config.header_opacity : 1);
+    const contentColor = this._config.content_color || '#fafafa';
+    const contentOpacity = (this._config.content_opacity !== undefined ? this._config.content_opacity : 1);
+    
+    const headerBg = this._hexToRgba(headerColor, headerOpacity);
+    const contentBg = this._hexToRgba(contentColor, contentOpacity);
+    
     const style = `
       :host{display:block;box-sizing:border-box;padding:8px;max-width:420px;margin:8px auto;font-family:inherit}
       .card{border:1px solid #ddd;border-radius:6px;overflow:hidden;background:#fff}
-      .header{display:flex;padding:12px;align-items:center;gap:12px}
+      .header{display:flex;padding:12px;align-items:center;gap:12px;background:${headerBg}}
       .left{flex:1}
       .center{width:120px;text-align:center}
       .right{width:120px;text-align:right}
@@ -265,11 +273,11 @@ class PetfeederCard extends HTMLElement {
       .status-title{font-size:12px;color:#666;margin-bottom:6px}
       .menu-wrap{display:flex;justify-content:flex-end}
       .menu-select{padding:6px}
-      .content{padding:12px;border-top:1px solid #eee}
+      .content{padding:12px;border-top:1px solid #eee;background:${contentBg}}
       .row{display:flex;gap:8px;padding:6px 0}
       .label{width:120px;color:#444;font-weight:500}
       .value{flex:1;color:#222}
-      .menu-content{margin-top:12px;padding:8px;background:#fafafa;border-radius:4px;min-height:60px}
+      .menu-content{margin-top:12px;padding:8px;background:rgba(0,0,0,0.03);border-radius:4px;min-height:60px}
       @media (max-width:420px){:host{padding:6px}.center{width:86px}.right{width:86px}}
     `;
 
@@ -285,6 +293,14 @@ class PetfeederCard extends HTMLElement {
     wrap.appendChild(this._renderContent());
 
     this._shadow.appendChild(wrap);
+  }
+
+  _hexToRgba(hex, alpha) {
+    if (!hex) hex = '#ffffff';
+    const r = parseInt(hex.slice(1, 3), 16);
+    const g = parseInt(hex.slice(3, 5), 16);
+    const b = parseInt(hex.slice(5, 7), 16);
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
   }
 }
 
@@ -404,6 +420,12 @@ class PetfeederCardEditor extends HTMLElement {
         this._dispatch();
       }));
 
+      // Status Label
+      body.appendChild(this._buildTextField('Status Label', this._config.status_label || 'status:', 'e.g., status:', v => {
+        this._config.status_label = v || 'status:';
+        this._dispatch();
+      }));
+
       // Status Icons
       const statusTitle = document.createElement('div');
       statusTitle.style.cssText = 'font-size:14px;font-weight:500;color:var(--primary-text-color);margin:16px 0 8px';
@@ -520,6 +542,33 @@ class PetfeederCardEditor extends HTMLElement {
           body.appendChild(tabContent);
         }
       }
+    }));
+
+    // === VISUALS SECTION ===
+    editor.appendChild(this._buildSection('Visuals', false, (body) => {
+      // Header Color
+      body.appendChild(this._buildColorInput('Header Background Color', this._config.header_color || '#ffffff', v => {
+        this._config.header_color = v;
+        this._dispatch();
+      }));
+
+      // Header Opacity
+      body.appendChild(this._buildSlider('Header Transparency', (this._config.header_opacity !== undefined ? this._config.header_opacity : 1), v => {
+        this._config.header_opacity = parseFloat(v);
+        this._dispatch();
+      }));
+
+      // Content Color
+      body.appendChild(this._buildColorInput('Content Background Color', this._config.content_color || '#fafafa', v => {
+        this._config.content_color = v;
+        this._dispatch();
+      }));
+
+      // Content Opacity
+      body.appendChild(this._buildSlider('Content Transparency', (this._config.content_opacity !== undefined ? this._config.content_opacity : 1), v => {
+        this._config.content_opacity = parseFloat(v);
+        this._dispatch();
+      }));
     }));
 
     this.appendChild(editor);
@@ -685,6 +734,67 @@ class PetfeederCardEditor extends HTMLElement {
     container.appendChild(addBtn);
 
     return container;
+  }
+
+  _buildColorInput(label, value, onChange) {
+    const field = document.createElement('div');
+    field.className = 'pf-field';
+    const lab = document.createElement('label');
+    lab.className = 'pf-field-label';
+    lab.textContent = label;
+    const input = document.createElement('input');
+    input.type = 'color';
+    input.className = 'pf-text-input';
+    input.style.height = '40px';
+    input.style.cursor = 'pointer';
+    input.value = value || '#ffffff';
+    input.addEventListener('change', e => onChange(e.target.value));
+    field.appendChild(lab);
+    field.appendChild(input);
+    return field;
+  }
+
+  _buildSlider(label, value, onChange) {
+    const field = document.createElement('div');
+    field.className = 'pf-field';
+    const lab = document.createElement('label');
+    lab.className = 'pf-field-label';
+    lab.textContent = label;
+    
+    const container = document.createElement('div');
+    container.style.display = 'flex';
+    container.style.gap = '8px';
+    container.style.alignItems = 'center';
+    
+    const slider = document.createElement('input');
+    slider.type = 'range';
+    slider.min = '0';
+    slider.max = '1';
+    slider.step = '0.1';
+    slider.value = value || '1';
+    slider.style.flex = '1';
+    slider.style.height = '6px';
+    slider.style.cursor = 'pointer';
+    
+    const valueDisplay = document.createElement('div');
+    valueDisplay.style.minWidth = '40px';
+    valueDisplay.style.textAlign = 'right';
+    valueDisplay.style.fontWeight = '500';
+    valueDisplay.style.fontSize = '12px';
+    valueDisplay.style.color = 'var(--primary-text-color)';
+    valueDisplay.textContent = `${Math.round(value * 100)}%`;
+    
+    slider.addEventListener('input', e => {
+      valueDisplay.textContent = `${Math.round(e.target.value * 100)}%`;
+      onChange(e.target.value);
+    });
+    
+    container.appendChild(slider);
+    container.appendChild(valueDisplay);
+    
+    field.appendChild(lab);
+    field.appendChild(container);
+    return field;
   }
 }
 
