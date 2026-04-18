@@ -820,11 +820,11 @@ class PetfeederCard extends HTMLElement {
       .tab-btn{width:100%;padding:10px 8px;border:none;background:var(--secondary-background-color,#f5f5f5);color:var(--secondary-text-color,#888);font-size:11px;font-weight:500;cursor:pointer;transition:all 0.2s;border-radius:6px;text-align:center;white-space:nowrap;border:1px solid var(--divider-color,#e0e0e0)}
       .tab-btn:hover{background:var(--ha-card-background,#fff);border-color:${accentColor}}
       .tab-btn.active{color:${accentColor};background:var(--ha-card-background,#fff);border-color:${accentColor};font-weight:600}
-      .tab-content-area{background:${contentBg};padding:16px;border-top:1px solid var(--divider-color,#e0e0e0);min-height:60px;animation:slideUp 0.4s ease-out;position:relative;display:none}
-      .tab-content-area.active{display:block}
-      @keyframes slideUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
-      @keyframes slideDown{from{opacity:1;transform:translateY(0)}to{opacity:0;transform:translateY(20px)}}
-      .tab-content-close-btn{position:absolute;top:12px;right:12px;width:32px;height:32px;border:none;background:transparent;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--secondary-text-color,#888);border-radius:6px;transition:all 0.2s}
+      .tab-content-area{background:${contentBg};padding:16px;border-top:1px solid var(--divider-color,#e0e0e0);min-height:60px;animation:slideDown 0.4s ease-out;position:relative;visibility:hidden;opacity:0;transition:visibility 0s 0.4s,opacity 0.4s ease-out}
+      .tab-content-area.active{visibility:visible;opacity:1;transition:visibility 0s,opacity 0.4s ease-out}
+      @keyframes slideDown{from{transform:translateY(-20px)}to{transform:translateY(0)}}
+      @keyframes slideUp{from{transform:translateY(20px)}to{transform:translateY(0)}}
+      .tab-content-close-btn{position:absolute;bottom:12px;left:50%;transform:translateX(-50%);width:32px;height:32px;border:none;background:transparent;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--secondary-text-color,#888);border-radius:6px;transition:all 0.2s}
       .tab-content-close-btn:hover{background:var(--divider-color,#e0e0e0);color:var(--primary-text-color,#333)}
       .tab-content-close-btn ha-icon{font-size:20px}
       .schedule-section{display:none}
@@ -966,18 +966,18 @@ class PetfeederCard extends HTMLElement {
     const tabContentArea = document.createElement('div');
     tabContentArea.className = 'tab-content-area' + (this._activeTab ? ' active' : '');
 
-    // Close button
+    // Close button (will be added at the end, after content)
     const closeBtn = document.createElement('button');
     closeBtn.className = 'tab-content-close-btn';
     closeBtn.innerHTML = '<ha-icon icon="mdi:chevron-up"></ha-icon>';
     closeBtn.addEventListener('click', () => {
-      tabContentArea.style.animation = 'slideDown 0.4s ease-out forwards';
+      tabContentArea.style.animation = 'slideUp 0.4s ease-out forwards';
+      tabContentArea.style.opacity = '0';
       setTimeout(() => {
         this._activeTab = null;
         this.render();
       }, 400);
     });
-    tabContentArea.appendChild(closeBtn);
 
     // Schedules tab content
     const schedTab = document.createElement('div');
@@ -1002,6 +1002,9 @@ class PetfeederCard extends HTMLElement {
     settingsTab.className = 'tab-content-settings' + (this._activeTab === 'settings' ? ' active' : '');
     settingsTab.appendChild(this._renderSettingsTab());
     tabContentArea.appendChild(settingsTab);
+
+    // Add close button at the end
+    tabContentArea.appendChild(closeBtn);
 
     wrap.appendChild(tabContentArea);
 
@@ -1365,7 +1368,7 @@ class PetfeederCardEditor extends HTMLElement {
           // Show Name toggle
           const showNameRow = document.createElement('div');
           showNameRow.className = 'popup-row';
-          showNameRow.style.cssText = 'margin-bottom:8px';
+          showNameRow.style.cssText = 'display:flex;align-items:center;justify-content:space-between;margin-bottom:12px';
           const showNameLabel = document.createElement('label');
           showNameLabel.className = 'pf-field-label';
           showNameLabel.textContent = 'Show Name';
@@ -1385,7 +1388,7 @@ class PetfeederCardEditor extends HTMLElement {
           // Show Icon toggle
           const showIconRow = document.createElement('div');
           showIconRow.className = 'popup-row';
-          showIconRow.style.cssText = 'margin-bottom:12px';
+          showIconRow.style.cssText = 'display:flex;align-items:center;justify-content:space-between;margin-bottom:12px';
           const showIconLabel = document.createElement('label');
           showIconLabel.className = 'pf-field-label';
           showIconLabel.textContent = 'Show Icon';
@@ -1405,7 +1408,7 @@ class PetfeederCardEditor extends HTMLElement {
           // Show State toggle
           const showStateRow = document.createElement('div');
           showStateRow.className = 'popup-row';
-          showStateRow.style.cssText = 'margin-bottom:12px';
+          showStateRow.style.cssText = 'display:flex;align-items:center;justify-content:space-between;margin-bottom:12px';
           const showStateLabel = document.createElement('label');
           showStateLabel.className = 'pf-field-label';
           showStateLabel.textContent = 'Show State';
