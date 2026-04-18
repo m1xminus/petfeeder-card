@@ -56,35 +56,50 @@ class PetfeederCard extends HTMLElement {
     const container = document.createElement('div');
     container.className = 'status-row';
     (this._config.status || []).forEach((s, idx) => {
+      if (!s || (!s.entity && !s.icon && !s.name)) {
+        return; // Skip empty slots
+      }
       const item = document.createElement('div');
       item.className = 'status-item';
-      if (!s) {
-        item.innerHTML = '<div class="dot empty"></div>';
-      } else {
-        let color = s.color || '#888';
-        if (s.entity && this._hass) {
-          const st = this._hass.states[s.entity];
-          if (st) {
-            if (s.color_map) {
-              try {
-                const map = typeof s.color_map === 'string' ? JSON.parse(s.color_map) : s.color_map;
-                if (map[st.state]) color = map[st.state];
-              } catch (e) {}
-            } else if (st.state === 'on' || st.state === 'home' || st.state === 'connected') {
-              color = '#4caf50';
-            } else if (st.state === 'off' || st.state === 'unavailable' || st.state === 'disconnected') {
-              color = '#f44336';
-            }
+      
+      let color = s.color || '#888';
+      if (s.entity && this._hass) {
+        const st = this._hass.states[s.entity];
+        if (st) {
+          if (s.color_map) {
+            try {
+              const map = typeof s.color_map === 'string' ? JSON.parse(s.color_map) : s.color_map;
+              if (map[st.state]) color = map[st.state];
+            } catch (e) {}
+          } else if (st.state === 'on' || st.state === 'home' || st.state === 'connected') {
+            color = '#4caf50';
+          } else if (st.state === 'off' || st.state === 'unavailable' || st.state === 'disconnected') {
+            color = '#f44336';
           }
         }
-        item.innerHTML = `<div class="dot" style="background:${color}"></div>`;
-        if (s.label) {
-          const lab = document.createElement('div');
-          lab.className = 'status-label';
-          lab.textContent = s.label;
-          item.appendChild(lab);
-        }
       }
+
+      // If icon is available, display it
+      if (s.icon) {
+        const iconDiv = document.createElement('div');
+        iconDiv.style.cssText = `width:24px;height:24px;background:${color};mask-image:url('data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22%3E%3Cpath d=%22M12,2A10,10,0,1,0,22,12,10,10,0,0,0,12,2Zm0,2a8,8,0,1,1-8,8,8,8,0,0,1,8-8Z%22/%3E%3C/svg%3E');mask-size:cover;-webkit-mask-image:url('data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22%3E%3Cpath d=%22M12,2A10,10,0,1,0,22,12,10,10,0,0,0,12,2Zm0,2a8,8,0,1,1-8,8,8,8,0,0,1,8-8Z%22/%3E%3C/svg%3E');-webkit-mask-size:cover;`;
+        iconDiv.innerHTML = `<ha-icon icon="${s.icon}" style="color:${color};width:24px;height:24px;"></ha-icon>`;
+        item.appendChild(iconDiv);
+      } else {
+        // Fallback to colored dot if no icon
+        const dot = document.createElement('div');
+        dot.style.cssText = `width:14px;height:14px;border-radius:50%;background:${color};`;
+        item.appendChild(dot);
+      }
+
+      // Display name/label if available
+      if (s.name) {
+        const nameDiv = document.createElement('div');
+        nameDiv.style.cssText = 'font-size:12px;color:#666;margin-left:6px;';
+        nameDiv.textContent = s.name;
+        item.appendChild(nameDiv);
+      }
+
       container.appendChild(item);
     });
     return container;
@@ -263,6 +278,7 @@ class PetfeederCardEditor extends HTMLElement {
     this._config = {};
     this._shadow = this.attachShadow({ mode: 'open' });
     this._selectedMenuIdx = 0;
+    this._expandedSections = {}; // Track which sections are expanded
   }
 
   setConfig(config) {
@@ -278,32 +294,55 @@ class PetfeederCardEditor extends HTMLElement {
     this.dispatchEvent(new CustomEvent('config-changed', { detail: { config: this._config } }));
   }
 
+  _isDarkMode() {
+    // Detect if Home Assistant is in dark mode
+    return document.documentElement.style.colorScheme === 'dark' || 
+           window.matchMedia('(prefers-color-scheme: dark)').matches;
+  }
+
   _render() {
     this._shadow.innerHTML = '';
+    const isDark = this._isDarkMode();
+    const bgColor = isDark ? '#1a1a1a' : '#f5f5f5';
+    const cardBg = isDark ? '#2a2a2a' : '#fff';
+    const textColor = isDark ? '#e0e0e0' : '#333';
+    const borderColor = isDark ? '#444' : '#ddd';
+    const accentColor = '#2979f0';
+    const dangerColor = '#f44336';
+
     const style = document.createElement('style');
     style.textContent = `
-      :host{display:block;padding:10px;font-family:inherit;background:#f5f5f5}
-      .section{background:#fff;border-radius:6px;padding:12px;margin-bottom:12px;border:1px solid #ddd}
-      .section-title{font-size:14px;font-weight:700;margin-bottom:10px;color:#333;border-bottom:2px solid #007bff;padding-bottom:6px}
+      :host{display:block;padding:10px;font-family:inherit;background:${bgColor}}
+      .section{background:${cardBg};border-radius:6px;margin-bottom:12px;border:1px solid ${borderColor};overflow:hidden}
+      .section-header{padding:12px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;background:${cardBg};border-bottom:1px solid ${borderColor};transition:all 0.2s}
+      .section-header:hover{background:${isDark ? '#333' : '#f9f9f9'}}
+      .section-title{font-size:14px;font-weight:700;color:${textColor};display:flex;align-items:center;gap:8px}
+      .section-title-icon{display:inline-block;transition:transform 0.2s}
+      .section-content{padding:12px;display:none;max-height:0;overflow:hidden;transition:all 0.3s}
+      .section.expanded .section-content{display:block;max-height:2000px}
       .row{display:flex;gap:8px;align-items:center;margin-bottom:8px}
       .row-full{display:block;margin-bottom:10px}
-      .label{font-weight:600;min-width:140px;color:#555}
-      .label-small{font-weight:600;font-size:12px;color:#666}
-      .input,select,textarea{padding:6px;border:1px solid #ccc;border-radius:4px;font-family:inherit}
+      .label{font-weight:600;min-width:140px;color:${textColor}}
+      .label-small{font-weight:600;font-size:12px;color:${textColor}}
+      .input,select,textarea{padding:6px;border:1px solid ${borderColor};border-radius:4px;font-family:inherit;background:${isDark ? '#3a3a3a' : '#fff'};color:${textColor};transition:border 0.2s}
+      .input:focus,select:focus,textarea:focus{outline:none;border-color:${accentColor}}
       .input{flex:1;min-width:150px}
-      .checkbox{width:18px;height:18px;cursor:pointer}
-      .btn{padding:6px 12px;border:1px solid #007bff;border-radius:4px;background:#007bff;color:#fff;cursor:pointer;font-weight:600}
-      .btn:hover{background:#0056b3}
-      .btn-danger{border-color:#dc3545;background:#dc3545}
-      .btn-danger:hover{background:#c82333}
+      .checkbox{width:18px;height:18px;cursor:pointer;accent-color:${accentColor}}
+      .btn{padding:6px 12px;border:1px solid ${accentColor};border-radius:4px;background:${accentColor};color:#fff;cursor:pointer;font-weight:600;transition:all 0.2s}
+      .btn:hover{background:${isDark ? '#1e5db8' : '#1565c0'};box-shadow:0 2px 4px rgba(41,121,240,0.3)}
+      .btn-danger{border-color:${dangerColor};background:${dangerColor}}
+      .btn-danger:hover{background:${isDark ? '#d32f2f' : '#c62828'};box-shadow:0 2px 4px rgba(244,67,54,0.3)}
       .btn-sm{padding:4px 8px;font-size:12px}
-      .status-item{border:1px solid #eee;padding:10px;border-radius:4px;background:#fafafa;margin-bottom:8px}
+      .status-item{border:1px solid ${borderColor};padding:10px;border-radius:4px;background:${isDark ? '#3a3a3a' : '#fafafa'};margin-bottom:8px}
       .status-header{display:flex;gap:8px;align-items:center;margin-bottom:8px}
-      .menu-tabs{display:flex;gap:4px;margin-bottom:10px;flex-wrap:wrap;border-bottom:2px solid #ddd;padding-bottom:6px}
-      .menu-tab{padding:6px 12px;border:1px solid #ddd;border-radius:4px 4px 0 0;background:#fafafa;cursor:pointer;font-weight:600}
-      .menu-tab.active{background:#007bff;color:#fff;border-color:#007bff}
-      .menu-content-area{border:1px solid #ddd;border-radius:4px;padding:10px;background:#fff}
-      .error{color:#dc3545;font-size:12px;margin-top:4px}
+      .status-number{font-weight:600;color:${textColor}}
+      .icon-preview{width:24px;height:24px;display:flex;align-items:center;justify-content:center;border-radius:4px;background:${isDark ? '#2a2a2a' : '#f0f0f0'};flex-shrink:0}
+      .menu-tabs{display:flex;gap:4px;margin-bottom:10px;flex-wrap:wrap;border-bottom:2px solid ${borderColor};padding-bottom:6px;overflow-x:auto}
+      .menu-tab{padding:6px 12px;border:1px solid ${borderColor};border-radius:4px 4px 0 0;background:${isDark ? '#3a3a3a' : '#fafafa'};cursor:pointer;font-weight:600;color:${textColor};transition:all 0.2s}
+      .menu-tab:hover{background:${isDark ? '#444' : '#f0f0f0'}}
+      .menu-tab.active{background:${accentColor};color:#fff;border-color:${accentColor}}
+      .menu-content-area{border:1px solid ${borderColor};border-radius:4px;padding:10px;background:${isDark ? '#3a3a3a' : '#f9f9f9'}}
+      .error{color:${dangerColor};font-size:12px;margin-top:4px}
       .hidden{display:none}
     `;
     this._shadow.appendChild(style);
@@ -311,12 +350,7 @@ class PetfeederCardEditor extends HTMLElement {
     const container = document.createElement('div');
 
     // === MODE SECTION ===
-    const modeSection = document.createElement('div');
-    modeSection.className = 'section';
-    const modeTitle = document.createElement('div');
-    modeTitle.className = 'section-title';
-    modeTitle.textContent = 'Mode';
-    modeSection.appendChild(modeTitle);
+    const modeSection = this._makeCollapsibleSection('Mode', false);
     const modeRow = document.createElement('div');
     modeRow.className = 'row';
     const modeLabel = document.createElement('div');
@@ -337,27 +371,23 @@ class PetfeederCardEditor extends HTMLElement {
     });
     modeRow.appendChild(modeLabel);
     modeRow.appendChild(modeSelect);
-    modeSection.appendChild(modeRow);
-    container.appendChild(modeSection);
+    modeSection.content.appendChild(modeRow);
+    container.appendChild(modeSection.element);
 
     // === HEADER SECTION ===
-    const headerSection = document.createElement('div');
-    headerSection.className = 'section';
-    const headerTitle = document.createElement('div');
-    headerTitle.className = 'section-title';
-    headerTitle.textContent = 'Header';
-    headerSection.appendChild(headerTitle);
+    const headerSection = this._makeCollapsibleSection('Header', false);
 
     // Pet Image
-    headerSection.appendChild(this._makeInput('image', 'Pet Image Path', this._config.image || ''));
+    headerSection.content.appendChild(this._makeInput('image', 'Pet Image Path', this._config.image || ''));
 
     // Status Icons
     const statusTitle = document.createElement('div');
     statusTitle.style.fontWeight = '600';
     statusTitle.style.marginTop = '10px';
     statusTitle.style.marginBottom = '8px';
+    statusTitle.style.color = textColor;
     statusTitle.textContent = 'Status Icons (1-4)';
-    headerSection.appendChild(statusTitle);
+    headerSection.content.appendChild(statusTitle);
 
     for (let i = 0; i < 4; i++) {
       const s = (this._config.status && this._config.status[i]) || {};
@@ -366,9 +396,20 @@ class PetfeederCardEditor extends HTMLElement {
       const header = document.createElement('div');
       header.className = 'status-header';
       const numLabel = document.createElement('div');
-      numLabel.style.fontWeight = '600';
+      numLabel.className = 'status-number';
       numLabel.textContent = `Icon ${i + 1}`;
       header.appendChild(numLabel);
+      
+      // Icon preview
+      const iconPreview = document.createElement('div');
+      iconPreview.className = 'icon-preview';
+      if (s.icon) {
+        iconPreview.innerHTML = `<ha-icon icon="${s.icon}" style="width:20px;height:20px;"></ha-icon>`;
+      } else {
+        iconPreview.style.color = '#999';
+        iconPreview.textContent = '○';
+      }
+      header.appendChild(iconPreview);
       item.appendChild(header);
 
       // Name with checkbox
@@ -389,11 +430,13 @@ class PetfeederCardEditor extends HTMLElement {
       nameInput.addEventListener('change', e => {
         this._setByPath(`status.${i}.name`, e.target.value || null);
         this._dispatch();
+        this._render();
       });
       nameCB.addEventListener('change', e => {
         nameInput.disabled = !e.target.checked;
         if (!e.target.checked) this._setByPath(`status.${i}.name`, null);
         this._dispatch();
+        this._render();
       });
       nameRow.appendChild(nameCB);
       nameRow.appendChild(nameLabel);
@@ -421,11 +464,13 @@ class PetfeederCardEditor extends HTMLElement {
       iconInput.addEventListener('change', e => {
         this._setByPath(`status.${i}.icon`, e.target.value || null);
         this._dispatch();
+        this._render();
       });
       iconCB.addEventListener('change', e => {
         iconInput.disabled = !e.target.checked;
         if (!e.target.checked) this._setByPath(`status.${i}.icon`, null);
         this._dispatch();
+        this._render();
       });
       iconRow.appendChild(iconCB);
       iconRow.appendChild(iconLabel);
@@ -435,18 +480,13 @@ class PetfeederCardEditor extends HTMLElement {
       // Color map (condition)
       item.appendChild(this._makeInput(`status.${i}.color_map`, 'Color Map (JSON):', s.color_map || '', `{"on":"#4caf50","off":"#f44336"}`));
 
-      headerSection.appendChild(item);
+      headerSection.content.appendChild(item);
     }
 
-    container.appendChild(headerSection);
+    container.appendChild(headerSection.element);
 
     // === MENU SECTION ===
-    const menuSection = document.createElement('div');
-    menuSection.className = 'section';
-    const menuTitle = document.createElement('div');
-    menuTitle.className = 'section-title';
-    menuTitle.textContent = 'Menu';
-    menuSection.appendChild(menuTitle);
+    const menuSection = this._makeCollapsibleSection('Menu', false);
 
     // Menu management
     const menuBtnRow = document.createElement('div');
@@ -462,7 +502,7 @@ class PetfeederCardEditor extends HTMLElement {
       this._dispatch();
     });
     menuBtnRow.appendChild(addMenuBtn);
-    menuSection.appendChild(menuBtnRow);
+    menuSection.content.appendChild(menuBtnRow);
 
     // Menu tabs and content
     if (this._config.menu && this._config.menu.length > 0) {
@@ -478,7 +518,7 @@ class PetfeederCardEditor extends HTMLElement {
         });
         tabsContainer.appendChild(tab);
       });
-      menuSection.appendChild(tabsContainer);
+      menuSection.content.appendChild(tabsContainer);
 
       // Content area for selected menu
       const contentArea = document.createElement('div');
@@ -531,12 +571,48 @@ class PetfeederCardEditor extends HTMLElement {
         removeRow.appendChild(removeBtn);
         contentArea.appendChild(removeRow);
       }
-      menuSection.appendChild(contentArea);
+      menuSection.content.appendChild(contentArea);
     }
 
-    container.appendChild(menuSection);
+    container.appendChild(menuSection.element);
 
     this._shadow.appendChild(container);
+  }
+
+  _makeCollapsibleSection(title, expandedByDefault = false) {
+    const isExpanded = this._expandedSections[title] !== undefined ? this._expandedSections[title] : expandedByDefault;
+    
+    const element = document.createElement('div');
+    element.className = 'section' + (isExpanded ? ' expanded' : '');
+    
+    const header = document.createElement('div');
+    header.className = 'section-header';
+    
+    const titleDiv = document.createElement('div');
+    titleDiv.className = 'section-title';
+    const icon = document.createElement('span');
+    icon.className = 'section-title-icon';
+    icon.textContent = isExpanded ? '▼' : '▶';
+    titleDiv.appendChild(icon);
+    const text = document.createElement('span');
+    text.textContent = title;
+    titleDiv.appendChild(text);
+    
+    header.appendChild(titleDiv);
+    element.appendChild(header);
+    
+    const content = document.createElement('div');
+    content.className = 'section-content';
+    element.appendChild(content);
+    
+    header.addEventListener('click', () => {
+      const shouldExpand = !element.classList.contains('expanded');
+      this._expandedSections[title] = shouldExpand;
+      element.classList.toggle('expanded', shouldExpand);
+      icon.textContent = shouldExpand ? '▼' : '▶';
+    });
+    
+    return { element, content };
   }
 
   _makeInput(path, label, value, placeholder) {
