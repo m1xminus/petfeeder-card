@@ -290,546 +290,399 @@ class PetfeederCard extends HTMLElement {
 
 customElements.define('petfeeder-card', PetfeederCard);
 
-// Minimal editor registration for Lovelace visual editor to find
+// Editor uses light DOM so HA native components (ha-entity-picker, ha-icon-picker) work properly
 class PetfeederCardEditor extends HTMLElement {
   constructor() {
     super();
     this._config = {};
     this._hass = null;
-    this._shadow = this.attachShadow({ mode: 'open' });
     this._selectedMenuIdx = 0;
-    this._expandedSections = {}; // Track which sections are expanded
+    this._expandedSections = {};
   }
 
   setConfig(config) {
-    this._config = config || {};
+    this._config = JSON.parse(JSON.stringify(config || {}));
     this._render();
   }
 
   set hass(hass) {
     this._hass = hass;
-    this._render();
-  }
-
-  get _value() {
-    return this._config;
+    // Update hass on existing HA pickers without full re-render
+    this.querySelectorAll('ha-entity-picker').forEach(el => { el.hass = hass; });
+    this.querySelectorAll('ha-icon-picker').forEach(el => { el.hass = hass; });
+    if (!this._rendered) this._render();
   }
 
   _dispatch() {
-    this.dispatchEvent(new CustomEvent('config-changed', { detail: { config: this._config } }));
-  }
-
-  _isDarkMode() {
-    // Detect if Home Assistant is in dark mode
-    return document.documentElement.style.colorScheme === 'dark' || 
-           window.matchMedia('(prefers-color-scheme: dark)').matches;
+    this.dispatchEvent(new CustomEvent('config-changed', {
+      detail: { config: JSON.parse(JSON.stringify(this._config)) },
+      bubbles: true,
+      composed: true
+    }));
   }
 
   _render() {
-    this._shadow.innerHTML = '';
-    const isDark = this._isDarkMode();
-    const bgColor = isDark ? '#1a1a1a' : '#f5f5f5';
-    const cardBg = isDark ? '#2a2a2a' : '#fff';
-    const textColor = isDark ? '#e0e0e0' : '#333';
-    const borderColor = isDark ? '#444' : '#ddd';
-    const accentColor = '#2979f0';
-    const dangerColor = '#f44336';
+    this._rendered = true;
+    this.innerHTML = '';
 
+    // Use HA CSS variables so it matches native theme automatically
     const style = document.createElement('style');
     style.textContent = `
-      :host{display:block;padding:10px;font-family:inherit;background:${bgColor}}
-      .section{background:${cardBg};border-radius:6px;margin-bottom:12px;border:1px solid ${borderColor};overflow:hidden}
-      .section-header{padding:12px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;background:${cardBg};border-bottom:1px solid ${borderColor};transition:all 0.2s}
-      .section-header:hover{background:${isDark ? '#333' : '#f9f9f9'}}
-      .section-title{font-size:14px;font-weight:700;color:${textColor};display:flex;align-items:center;gap:8px}
-      .section-title-icon{display:inline-block;transition:transform 0.2s}
-      .section-content{padding:12px;display:none;max-height:0;overflow:hidden;transition:all 0.3s}
-      .section.expanded .section-content{display:block;max-height:2000px}
-      .row{display:flex;gap:8px;align-items:center;margin-bottom:8px}
-      .row-full{display:block;margin-bottom:10px}
-      .label{font-weight:600;min-width:140px;color:${textColor}}
-      .label-small{font-weight:600;font-size:12px;color:${textColor}}
-      .input,select,textarea{padding:6px;border:1px solid ${borderColor};border-radius:4px;font-family:inherit;background:${isDark ? '#3a3a3a' : '#fff'};color:${textColor};transition:border 0.2s}
-      .input:focus,select:focus,textarea:focus{outline:none;border-color:${accentColor}}
-      .input{flex:1;min-width:150px}
-      .checkbox{width:18px;height:18px;cursor:pointer;accent-color:${accentColor}}
-      .btn{padding:6px 12px;border:1px solid ${accentColor};border-radius:4px;background:${accentColor};color:#fff;cursor:pointer;font-weight:600;transition:all 0.2s}
-      .btn:hover{background:${isDark ? '#1e5db8' : '#1565c0'};box-shadow:0 2px 4px rgba(41,121,240,0.3)}
-      .btn-danger{border-color:${dangerColor};background:${dangerColor}}
-      .btn-danger:hover{background:${isDark ? '#d32f2f' : '#c62828'};box-shadow:0 2px 4px rgba(244,67,54,0.3)}
-      .btn-sm{padding:4px 8px;font-size:12px}
-      .status-item{border:1px solid ${borderColor};padding:10px;border-radius:4px;background:${isDark ? '#3a3a3a' : '#fafafa'};margin-bottom:8px}
-      .status-header{display:flex;gap:8px;align-items:center;margin-bottom:8px}
-      .status-number{font-weight:600;color:${textColor}}
-      .icon-preview{width:24px;height:24px;display:flex;align-items:center;justify-content:center;border-radius:4px;background:${isDark ? '#2a2a2a' : '#f0f0f0'};flex-shrink:0}
-      .menu-tabs{display:flex;gap:4px;margin-bottom:10px;flex-wrap:wrap;border-bottom:2px solid ${borderColor};padding-bottom:6px;overflow-x:auto}
-      .menu-tab{padding:6px 12px;border:1px solid ${borderColor};border-radius:4px 4px 0 0;background:${isDark ? '#3a3a3a' : '#fafafa'};cursor:pointer;font-weight:600;color:${textColor};transition:all 0.2s}
-      .menu-tab:hover{background:${isDark ? '#444' : '#f0f0f0'}}
-      .menu-tab.active{background:${accentColor};color:#fff;border-color:${accentColor}}
-      .menu-content-area{border:1px solid ${borderColor};border-radius:4px;padding:10px;background:${isDark ? '#3a3a3a' : '#f9f9f9'}}
-      .error{color:${dangerColor};font-size:12px;margin-top:4px}
-      .hidden{display:none}
+      .pf-editor{padding:0;font-family:var(--paper-font-body1_-_font-family,inherit)}
+      .pf-section{background:var(--ha-card-background,var(--card-background-color,#fff));border-radius:8px;margin-bottom:12px;border:1px solid var(--divider-color,#e0e0e0);overflow:hidden}
+      .pf-section-header{padding:12px 16px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;user-select:none}
+      .pf-section-header:hover{background:var(--secondary-background-color,#f5f5f5)}
+      .pf-section-title{font-size:16px;font-weight:500;color:var(--primary-text-color,#212121);display:flex;align-items:center;gap:8px}
+      .pf-arrow{transition:transform 0.2s;display:inline-block;color:var(--secondary-text-color,#727272)}
+      .pf-section-body{padding:0 16px 16px;display:none}
+      .pf-section.open .pf-section-body{display:block}
+      .pf-section.open .pf-arrow{transform:rotate(90deg)}
+      .pf-field{margin-bottom:16px}
+      .pf-field-label{display:block;font-size:12px;font-weight:500;color:var(--secondary-text-color,#727272);margin-bottom:4px;text-transform:uppercase;letter-spacing:0.5px}
+      .pf-text-input{width:100%;padding:8px 12px;border:1px solid var(--divider-color,#e0e0e0);border-radius:4px;background:var(--card-background-color,#fff);color:var(--primary-text-color,#212121);font-size:14px;box-sizing:border-box}
+      .pf-text-input:focus{outline:none;border-color:var(--primary-color,#03a9f4)}
+      .pf-status-card{border:1px solid var(--divider-color,#e0e0e0);border-radius:8px;padding:16px;margin-bottom:12px;background:var(--secondary-background-color,#fafafa)}
+      .pf-status-title{font-size:14px;font-weight:500;color:var(--primary-text-color,#212121);margin-bottom:12px}
+      .pf-row{display:flex;gap:8px;align-items:center;margin-bottom:8px}
+      .pf-row > ha-entity-picker,
+      .pf-row > ha-icon-picker{flex:1}
+      .pf-mapping-row{display:flex;gap:8px;align-items:center;padding:8px;background:var(--card-background-color,#fff);border:1px solid var(--divider-color,#e0e0e0);border-radius:6px;margin-bottom:6px}
+      .pf-mapping-state{flex:1;font-size:14px;color:var(--primary-text-color,#212121)}
+      .pf-mapping-state input{width:100%;padding:6px 8px;border:1px solid var(--divider-color,#e0e0e0);border-radius:4px;background:var(--card-background-color,#fff);color:var(--primary-text-color,#212121);font-size:13px;box-sizing:border-box}
+      .pf-color-input{width:40px;height:32px;border:none;border-radius:4px;cursor:pointer;padding:0}
+      .pf-btn{padding:8px 16px;border:none;border-radius:4px;cursor:pointer;font-size:13px;font-weight:500;transition:background 0.2s}
+      .pf-btn-primary{background:var(--primary-color,#03a9f4);color:#fff}
+      .pf-btn-primary:hover{opacity:0.85}
+      .pf-btn-danger{background:var(--error-color,#db4437);color:#fff}
+      .pf-btn-danger:hover{opacity:0.85}
+      .pf-btn-sm{padding:4px 10px;font-size:12px}
+      .pf-btn-icon{background:none;border:none;cursor:pointer;color:var(--secondary-text-color,#727272);padding:4px;font-size:18px;line-height:1}
+      .pf-btn-icon:hover{color:var(--error-color,#db4437)}
+      .pf-tabs{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:12px}
+      .pf-tab{padding:8px 16px;border:1px solid var(--divider-color,#e0e0e0);border-radius:20px;cursor:pointer;font-size:13px;font-weight:500;color:var(--primary-text-color,#212121);background:var(--card-background-color,#fff);transition:all 0.2s}
+      .pf-tab:hover{background:var(--secondary-background-color,#f5f5f5)}
+      .pf-tab.active{background:var(--primary-color,#03a9f4);color:#fff;border-color:var(--primary-color,#03a9f4)}
+      .pf-tab-content{border:1px solid var(--divider-color,#e0e0e0);border-radius:8px;padding:16px;background:var(--secondary-background-color,#fafafa)}
+      select.pf-select{width:100%;padding:8px 12px;border:1px solid var(--divider-color,#e0e0e0);border-radius:4px;background:var(--card-background-color,#fff);color:var(--primary-text-color,#212121);font-size:14px;box-sizing:border-box}
+      textarea.pf-textarea{width:100%;padding:8px 12px;border:1px solid var(--divider-color,#e0e0e0);border-radius:4px;background:var(--card-background-color,#fff);color:var(--primary-text-color,#212121);font-size:14px;box-sizing:border-box;resize:vertical}
     `;
-    this._shadow.appendChild(style);
+    this.appendChild(style);
 
-    const container = document.createElement('div');
+    const editor = document.createElement('div');
+    editor.className = 'pf-editor';
 
     // === MODE SECTION ===
-    const modeSection = this._makeCollapsibleSection('Mode', false);
-    const modeRow = document.createElement('div');
-    modeRow.className = 'row';
-    const modeLabel = document.createElement('div');
-    modeLabel.className = 'label';
-    modeLabel.textContent = 'Display Mode:';
-    const modeSelect = document.createElement('select');
-    modeSelect.className = 'input';
-    ['Normal', 'Compact'].forEach(m => {
-      const opt = document.createElement('option');
-      opt.value = m === 'Normal' ? 'false' : 'true';
-      opt.textContent = m;
-      modeSelect.appendChild(opt);
-    });
-    modeSelect.value = this._config.compact ? 'true' : 'false';
-    modeSelect.addEventListener('change', e => {
-      this._config.compact = e.target.value === 'true';
-      this._dispatch();
-    });
-    modeRow.appendChild(modeLabel);
-    modeRow.appendChild(modeSelect);
-    modeSection.content.appendChild(modeRow);
-    container.appendChild(modeSection.element);
+    editor.appendChild(this._buildSection('Mode', false, (body) => {
+      const field = document.createElement('div');
+      field.className = 'pf-field';
+      const label = document.createElement('label');
+      label.className = 'pf-field-label';
+      label.textContent = 'Display Mode';
+      const sel = document.createElement('select');
+      sel.className = 'pf-select';
+      ['Normal', 'Compact'].forEach(m => {
+        const opt = document.createElement('option');
+        opt.value = m === 'Normal' ? 'false' : 'true';
+        opt.textContent = m;
+        sel.appendChild(opt);
+      });
+      sel.value = this._config.compact ? 'true' : 'false';
+      sel.addEventListener('change', e => {
+        this._config.compact = e.target.value === 'true';
+        this._dispatch();
+      });
+      field.appendChild(label);
+      field.appendChild(sel);
+      body.appendChild(field);
+    }));
 
     // === HEADER SECTION ===
-    const headerSection = this._makeCollapsibleSection('Header', false);
+    editor.appendChild(this._buildSection('Header', false, (body) => {
+      // Pet Image
+      body.appendChild(this._buildTextField('Pet Image Path', this._config.image || '', '', v => {
+        this._config.image = v;
+        this._dispatch();
+      }));
 
-    // Pet Image
-    headerSection.content.appendChild(this._makeInput('image', 'Pet Image Path', this._config.image || ''));
+      // Status Icons
+      const statusTitle = document.createElement('div');
+      statusTitle.style.cssText = 'font-size:14px;font-weight:500;color:var(--primary-text-color);margin:16px 0 8px';
+      statusTitle.textContent = 'Status Icons';
+      body.appendChild(statusTitle);
 
-    // Status Icons
-    const statusTitle = document.createElement('div');
-    statusTitle.style.fontWeight = '600';
-    statusTitle.style.marginTop = '10px';
-    statusTitle.style.marginBottom = '8px';
-    statusTitle.style.color = textColor;
-    statusTitle.textContent = 'Status Icons (1-4)';
-    headerSection.content.appendChild(statusTitle);
+      for (let i = 0; i < 4; i++) {
+        if (!this._config.status) this._config.status = [null, null, null, null];
+        if (!this._config.status[i]) this._config.status[i] = {};
+        const s = this._config.status[i];
 
-    for (let i = 0; i < 4; i++) {
-      const s = (this._config.status && this._config.status[i]) || {};
-      const item = document.createElement('div');
-      item.className = 'status-item';
-      const header = document.createElement('div');
-      header.className = 'status-header';
-      const numLabel = document.createElement('div');
-      numLabel.className = 'status-number';
-      numLabel.textContent = `Icon ${i + 1}`;
-      header.appendChild(numLabel);
-      
-      // Icon preview
-      const iconPreview = document.createElement('div');
-      iconPreview.className = 'icon-preview';
-      if (s.icon) {
-        const haIcon = document.createElement('ha-icon');
-        haIcon.setAttribute('icon', s.icon);
-        haIcon.style.width = '20px';
-        haIcon.style.height = '20px';
-        haIcon.style.color = '#2979f0';
-        iconPreview.appendChild(haIcon);
-      } else {
-        iconPreview.style.color = '#999';
-        iconPreview.textContent = '○';
+        const card = document.createElement('div');
+        card.className = 'pf-status-card';
+
+        const title = document.createElement('div');
+        title.className = 'pf-status-title';
+        title.textContent = `Status Icon ${i + 1}`;
+        card.appendChild(title);
+
+        // Entity picker (native HA)
+        card.appendChild(this._buildHaEntityPicker('Entity', s.entity || '', v => {
+          this._config.status[i].entity = v || null;
+          this._dispatch();
+        }));
+
+        // Name
+        card.appendChild(this._buildTextField('Name', s.name || '', 'e.g., Feeding', v => {
+          this._config.status[i].name = v || null;
+          this._dispatch();
+        }));
+
+        // Icon picker (native HA)
+        card.appendChild(this._buildHaIconPicker('Icon', s.icon || '', v => {
+          this._config.status[i].icon = v || null;
+          this._dispatch();
+        }));
+
+        // Color mapping
+        card.appendChild(this._buildColorMapping(i));
+
+        body.appendChild(card);
       }
-      header.appendChild(iconPreview);
-      item.appendChild(header);
-
-      // Name with checkbox
-      const nameRow = document.createElement('div');
-      nameRow.className = 'row';
-      const nameCB = document.createElement('input');
-      nameCB.type = 'checkbox';
-      nameCB.className = 'checkbox';
-      nameCB.checked = !!s.name;
-      const nameLabel = document.createElement('div');
-      nameLabel.className = 'label-small';
-      nameLabel.textContent = 'Name:';
-      const nameInput = document.createElement('input');
-      nameInput.className = 'input';
-      nameInput.value = s.name || '';
-      nameInput.placeholder = 'e.g., Feeding';
-      nameInput.disabled = !nameCB.checked;
-      nameInput.addEventListener('change', e => {
-        this._setByPath(`status.${i}.name`, e.target.value || null);
-        this._dispatch();
-      });
-      nameCB.addEventListener('change', e => {
-        if (e.target.checked) {
-          this._setByPath(`status.${i}.name`, nameInput.value || `Status ${i + 1}`);
-        } else {
-          this._setByPath(`status.${i}.name`, null);
-        }
-        this._dispatch();
-        this._render();
-      });
-      nameRow.appendChild(nameCB);
-      nameRow.appendChild(nameLabel);
-      nameRow.appendChild(nameInput);
-      item.appendChild(nameRow);
-
-      // Entity
-      item.appendChild(this._makeInput(`status.${i}.entity`, 'Entity ID:', s.entity || ''));
-
-      // Icon with checkbox
-      const iconRow = document.createElement('div');
-      iconRow.className = 'row';
-      const iconCB = document.createElement('input');
-      iconCB.type = 'checkbox';
-      iconCB.className = 'checkbox';
-      iconCB.checked = !!s.icon;
-      const iconLabel = document.createElement('div');
-      iconLabel.className = 'label-small';
-      iconLabel.textContent = 'MDI Icon:';
-      const iconInput = document.createElement('input');
-      iconInput.className = 'input';
-      iconInput.value = s.icon || '';
-      iconInput.placeholder = 'e.g., mdi:food-apple';
-      iconInput.disabled = !iconCB.checked;
-      iconInput.addEventListener('change', e => {
-        this._setByPath(`status.${i}.icon`, e.target.value || null);
-        this._dispatch();
-      });
-      iconCB.addEventListener('change', e => {
-        if (e.target.checked) {
-          this._setByPath(`status.${i}.icon`, iconInput.value || 'mdi:circle');
-        } else {
-          this._setByPath(`status.${i}.icon`, null);
-        }
-        this._dispatch();
-        this._render();
-      });
-      iconRow.appendChild(iconCB);
-      iconRow.appendChild(iconLabel);
-      iconRow.appendChild(iconInput);
-      item.appendChild(iconRow);
-
-      // Color map (condition) - visual builder
-      const colorMapLabel = document.createElement('div');
-      colorMapLabel.className = 'label';
-      colorMapLabel.textContent = 'Color Mapping:';
-      colorMapLabel.style.marginTop = '10px';
-      item.appendChild(colorMapLabel);
-      
-      item.appendChild(this._makeColorMapBuilder(i));
-
-      headerSection.content.appendChild(item);
-    }
-
-    container.appendChild(headerSection.element);
+    }));
 
     // === MENU SECTION ===
-    const menuSection = this._makeCollapsibleSection('Menu', false);
-
-    // Menu management
-    const menuBtnRow = document.createElement('div');
-    menuBtnRow.className = 'row';
-    const addMenuBtn = document.createElement('button');
-    addMenuBtn.className = 'btn btn-sm';
-    addMenuBtn.textContent = '+ Add Menu Option';
-    addMenuBtn.addEventListener('click', () => {
-      this._config.menu = this._config.menu || [];
-      this._config.menu.push({ name: `Option ${this._config.menu.length + 1}`, content: '' });
-      this._selectedMenuIdx = this._config.menu.length - 1;
-      this._render();
-      this._dispatch();
-    });
-    menuBtnRow.appendChild(addMenuBtn);
-    menuSection.content.appendChild(menuBtnRow);
-
-    // Menu tabs and content
-    if (this._config.menu && this._config.menu.length > 0) {
-      const tabsContainer = document.createElement('div');
-      tabsContainer.className = 'menu-tabs';
-      this._config.menu.forEach((m, idx) => {
-        const tab = document.createElement('div');
-        tab.className = 'menu-tab' + (idx === this._selectedMenuIdx ? ' active' : '');
-        tab.textContent = m.name || `Option ${idx + 1}`;
-        tab.addEventListener('click', () => {
-          this._selectedMenuIdx = idx;
-          this._render();
-        });
-        tabsContainer.appendChild(tab);
-      });
-      menuSection.content.appendChild(tabsContainer);
-
-      // Content area for selected menu
-      const contentArea = document.createElement('div');
-      contentArea.className = 'menu-content-area';
-      const m = this._config.menu[this._selectedMenuIdx];
-      if (m) {
-        const nameInp = document.createElement('input');
-        nameInp.className = 'input';
-        nameInp.placeholder = 'Menu option name';
-        nameInp.value = m.name || '';
-        nameInp.addEventListener('change', e => {
-          this._config.menu[this._selectedMenuIdx].name = e.target.value;
-          this._render();
-          this._dispatch();
-        });
-        const nameLabel = document.createElement('div');
-        nameLabel.className = 'label';
-        nameLabel.textContent = 'Option Name:';
-        contentArea.appendChild(nameLabel);
-        contentArea.appendChild(nameInp);
-
-        const contentLabel = document.createElement('div');
-        contentLabel.className = 'label';
-        contentLabel.style.marginTop = '10px';
-        contentLabel.textContent = 'Content:';
-        contentArea.appendChild(contentLabel);
-        const contentTA = document.createElement('textarea');
-        contentTA.className = 'input';
-        contentTA.rows = 5;
-        contentTA.placeholder = 'Enter HTML or text content for this menu option';
-        contentTA.value = m.content || '';
-        contentTA.addEventListener('change', e => {
-          this._config.menu[this._selectedMenuIdx].content = e.target.value;
-          this._dispatch();
-        });
-        contentArea.appendChild(contentTA);
-
-        const removeRow = document.createElement('div');
-        removeRow.className = 'row';
-        removeRow.style.marginTop = '10px';
-        const removeBtn = document.createElement('button');
-        removeBtn.className = 'btn btn-danger btn-sm';
-        removeBtn.textContent = '✕ Remove This Option';
-        removeBtn.addEventListener('click', () => {
-          this._config.menu.splice(this._selectedMenuIdx, 1);
-          this._selectedMenuIdx = Math.max(0, this._selectedMenuIdx - 1);
-          this._render();
-          this._dispatch();
-        });
-        removeRow.appendChild(removeBtn);
-        contentArea.appendChild(removeRow);
-      }
-      menuSection.content.appendChild(contentArea);
-    }
-
-    container.appendChild(menuSection.element);
-
-    this._shadow.appendChild(container);
-  }
-
-  _makeCollapsibleSection(title, expandedByDefault = false) {
-    const isExpanded = this._expandedSections[title] !== undefined ? this._expandedSections[title] : expandedByDefault;
-    
-    const element = document.createElement('div');
-    element.className = 'section' + (isExpanded ? ' expanded' : '');
-    
-    const header = document.createElement('div');
-    header.className = 'section-header';
-    
-    const titleDiv = document.createElement('div');
-    titleDiv.className = 'section-title';
-    const icon = document.createElement('span');
-    icon.className = 'section-title-icon';
-    icon.textContent = isExpanded ? '▼' : '▶';
-    titleDiv.appendChild(icon);
-    const text = document.createElement('span');
-    text.textContent = title;
-    titleDiv.appendChild(text);
-    
-    header.appendChild(titleDiv);
-    element.appendChild(header);
-    
-    const content = document.createElement('div');
-    content.className = 'section-content';
-    element.appendChild(content);
-    
-    header.addEventListener('click', () => {
-      const shouldExpand = !element.classList.contains('expanded');
-      this._expandedSections[title] = shouldExpand;
-      element.classList.toggle('expanded', shouldExpand);
-      icon.textContent = shouldExpand ? '▼' : '▶';
-    });
-    
-    return { element, content };
-  }
-
-  _makeInput(path, label, value, placeholder) {
-    const row = document.createElement('div');
-    row.className = 'row-full';
-    const lab = document.createElement('div');
-    lab.className = 'label';
-    lab.textContent = label;
-    const input = document.createElement('input');
-    input.className = 'input';
-    input.value = value || '';
-    input.placeholder = placeholder || '';
-    const err = document.createElement('div');
-    err.className = 'error';
-    err.style.display = 'none';
-
-    const runValidation = (val) => {
-      if (path.endsWith('color_map')) {
-        if (!val || val.trim() === '') {
-          err.style.display = 'none';
-          return true;
-        }
-        try {
-          const p = typeof val === 'string' ? JSON.parse(val) : val;
-          if (p && typeof p === 'object') {
-            err.style.display = 'none';
-            return true;
-          }
-        } catch (e) {
-          err.textContent = 'Invalid JSON';
-          err.style.display = 'block';
-          return false;
-        }
-      }
-      err.style.display = 'none';
-      return true;
-    };
-
-    input.addEventListener('change', (e) => {
-      const ok = runValidation(e.target.value);
-      if (ok) this._setByPath(path, e.target.value);
-      this._dispatch();
-    });
-
-    runValidation(input.value);
-    row.appendChild(lab);
-    row.appendChild(input);
-    row.appendChild(err);
-    return row;
-  }
-
-  _setByPath(path, value) {
-    const parts = path.split('.');
-    let cur = this._config;
-    for (let i = 0; i < parts.length; i++) {
-      const p = parts[i];
-      if (i === parts.length - 1) {
-        if (p.match(/\d+/) && Array.isArray(cur)) cur[parseInt(p, 10)] = value;
-        else cur[p] = value;
-      } else {
-        if (!cur[parts[i]]) cur[parts[i]] = {};
-        cur = cur[parts[i]];
-      }
-    }
-  }
-
-  _makeColorMapBuilder(statusIdx) {
-    const container = document.createElement('div');
-    container.style.cssText = 'border:1px solid #444;border-radius:4px;padding:8px;background:#3a3a3a;margin-bottom:10px';
-    
-    const s = (this._config.status && this._config.status[statusIdx]) || {};
-    const colorMap = s.color_map || [];
-    if (!Array.isArray(colorMap)) {
-      this._config.status[statusIdx].color_map = [];
-    }
-
-    // Entity picker section
-    const pickerContainer = document.createElement('div');
-    pickerContainer.style.marginBottom = '10px';
-    
-    const pickerLabel = document.createElement('div');
-    pickerLabel.className = 'label';
-    pickerLabel.textContent = 'Entity';
-    pickerContainer.appendChild(pickerLabel);
-    
-    const haEntityPicker = document.createElement('ha-entity-picker');
-    haEntityPicker.hass = this._hass;
-    haEntityPicker.style.width = '100%';
-    
-    let selectedEntity = '';
-    haEntityPicker.addEventListener('value-changed', (e) => {
-      selectedEntity = e.detail.value;
-    });
-    
-    pickerContainer.appendChild(haEntityPicker);
-    container.appendChild(pickerContainer);
-
-    // Add mapping button
-    const addBtnContainer = document.createElement('div');
-    addBtnContainer.style.display = 'flex';
-    addBtnContainer.style.gap = '6px';
-    
-    const addMappingBtn = document.createElement('button');
-    addMappingBtn.className = 'btn btn-sm';
-    addMappingBtn.textContent = '+ Add State Mapping';
-    addMappingBtn.addEventListener('click', () => {
-      if (!selectedEntity || !this._hass || !this._hass.states[selectedEntity]) return;
-      
-      const entity = this._hass.states[selectedEntity];
-      const state = entity.state;
-      
-      if (!this._config.status[statusIdx].color_map) {
-        this._config.status[statusIdx].color_map = [];
-      }
-      
-      // Check if this state already exists
-      const exists = this._config.status[statusIdx].color_map.find(m => m.state === state);
-      if (!exists) {
-        this._config.status[statusIdx].color_map.push({ state, color: '#888888' });
+    editor.appendChild(this._buildSection('Menu', false, (body) => {
+      const addBtn = document.createElement('button');
+      addBtn.className = 'pf-btn pf-btn-primary pf-btn-sm';
+      addBtn.textContent = '+ Add Menu Option';
+      addBtn.style.marginBottom = '12px';
+      addBtn.addEventListener('click', () => {
+        this._config.menu = this._config.menu || [];
+        this._config.menu.push({ name: `Option ${this._config.menu.length + 1}`, content: '' });
+        this._selectedMenuIdx = this._config.menu.length - 1;
         this._dispatch();
         this._render();
-      }
-    });
-    
-    addBtnContainer.appendChild(addMappingBtn);
-    container.appendChild(addBtnContainer);
-
-    // Current mappings
-    if (colorMap && Array.isArray(colorMap) && colorMap.length > 0) {
-      const mappingsTitle = document.createElement('div');
-      mappingsTitle.style.fontWeight = '600';
-      mappingsTitle.style.marginTop = '12px';
-      mappingsTitle.style.marginBottom = '8px';
-      mappingsTitle.style.fontSize = '13px';
-      mappingsTitle.textContent = 'Mappings:';
-      container.appendChild(mappingsTitle);
-
-      colorMap.forEach((mapping, idx) => {
-        const mappingItem = document.createElement('div');
-        mappingItem.style.cssText = 'display:flex;gap:8px;margin-bottom:6px;align-items:center;background:#2a2a2a;padding:8px;border-radius:4px';
-
-        // State label
-        const stateLabel = document.createElement('div');
-        stateLabel.style.cssText = 'flex:1;font-size:13px;font-weight:500;color:#e0e0e0';
-        stateLabel.textContent = `State: ${mapping.state}`;
-
-        // Color picker
-        const colorInput = document.createElement('input');
-        colorInput.type = 'color';
-        colorInput.value = mapping.color || '#888888';
-        colorInput.style.width = '44px';
-        colorInput.style.height = '32px';
-        colorInput.style.cursor = 'pointer';
-        colorInput.style.border = 'none';
-        colorInput.style.borderRadius = '4px';
-        colorInput.addEventListener('change', e => {
-          this._config.status[statusIdx].color_map[idx].color = e.target.value;
-          this._dispatch();
-        });
-
-        // Remove button
-        const removeBtn = document.createElement('button');
-        removeBtn.className = 'btn btn-danger btn-sm';
-        removeBtn.style.padding = '4px 6px';
-        removeBtn.textContent = '✕';
-        removeBtn.addEventListener('click', () => {
-          this._config.status[statusIdx].color_map.splice(idx, 1);
-          this._dispatch();
-          this._render();
-        });
-
-        mappingItem.appendChild(stateLabel);
-        mappingItem.appendChild(colorInput);
-        mappingItem.appendChild(removeBtn);
-        container.appendChild(mappingItem);
       });
-    }
+      body.appendChild(addBtn);
+
+      if (this._config.menu && this._config.menu.length > 0) {
+        const tabs = document.createElement('div');
+        tabs.className = 'pf-tabs';
+        this._config.menu.forEach((m, idx) => {
+          const tab = document.createElement('div');
+          tab.className = 'pf-tab' + (idx === this._selectedMenuIdx ? ' active' : '');
+          tab.textContent = m.name || `Option ${idx + 1}`;
+          tab.addEventListener('click', () => {
+            this._selectedMenuIdx = idx;
+            this._render();
+          });
+          tabs.appendChild(tab);
+        });
+        body.appendChild(tabs);
+
+        const m = this._config.menu[this._selectedMenuIdx];
+        if (m) {
+          const tabContent = document.createElement('div');
+          tabContent.className = 'pf-tab-content';
+
+          tabContent.appendChild(this._buildTextField('Option Name', m.name || '', '', v => {
+            this._config.menu[this._selectedMenuIdx].name = v;
+            this._dispatch();
+          }));
+
+          const contentField = document.createElement('div');
+          contentField.className = 'pf-field';
+          const contentLabel = document.createElement('label');
+          contentLabel.className = 'pf-field-label';
+          contentLabel.textContent = 'Content';
+          const ta = document.createElement('textarea');
+          ta.className = 'pf-textarea';
+          ta.rows = 4;
+          ta.value = m.content || '';
+          ta.addEventListener('change', e => {
+            this._config.menu[this._selectedMenuIdx].content = e.target.value;
+            this._dispatch();
+          });
+          contentField.appendChild(contentLabel);
+          contentField.appendChild(ta);
+          tabContent.appendChild(contentField);
+
+          const removeBtn = document.createElement('button');
+          removeBtn.className = 'pf-btn pf-btn-danger pf-btn-sm';
+          removeBtn.textContent = 'Remove This Option';
+          removeBtn.style.marginTop = '8px';
+          removeBtn.addEventListener('click', () => {
+            this._config.menu.splice(this._selectedMenuIdx, 1);
+            this._selectedMenuIdx = Math.max(0, this._selectedMenuIdx - 1);
+            this._dispatch();
+            this._render();
+          });
+          tabContent.appendChild(removeBtn);
+
+          body.appendChild(tabContent);
+        }
+      }
+    }));
+
+    this.appendChild(editor);
+  }
+
+  // --- Builder helpers ---
+
+  _buildSection(title, openByDefault, buildContent) {
+    const isOpen = this._expandedSections[title] !== undefined ? this._expandedSections[title] : openByDefault;
+    const section = document.createElement('div');
+    section.className = 'pf-section' + (isOpen ? ' open' : '');
+
+    const header = document.createElement('div');
+    header.className = 'pf-section-header';
+    const titleEl = document.createElement('div');
+    titleEl.className = 'pf-section-title';
+    const arrow = document.createElement('span');
+    arrow.className = 'pf-arrow';
+    arrow.textContent = '▶';
+    titleEl.appendChild(arrow);
+    const text = document.createElement('span');
+    text.textContent = title;
+    titleEl.appendChild(text);
+    header.appendChild(titleEl);
+    section.appendChild(header);
+
+    const body = document.createElement('div');
+    body.className = 'pf-section-body';
+    buildContent(body);
+    section.appendChild(body);
+
+    header.addEventListener('click', () => {
+      const willOpen = !section.classList.contains('open');
+      this._expandedSections[title] = willOpen;
+      section.classList.toggle('open', willOpen);
+    });
+
+    return section;
+  }
+
+  _buildTextField(label, value, placeholder, onChange) {
+    const field = document.createElement('div');
+    field.className = 'pf-field';
+    const lab = document.createElement('label');
+    lab.className = 'pf-field-label';
+    lab.textContent = label;
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'pf-text-input';
+    input.value = value;
+    input.placeholder = placeholder || '';
+    // Use 'change' (on blur) only - avoids re-render issues
+    input.addEventListener('change', e => onChange(e.target.value));
+    field.appendChild(lab);
+    field.appendChild(input);
+    return field;
+  }
+
+  _buildHaEntityPicker(label, value, onChange) {
+    const field = document.createElement('div');
+    field.className = 'pf-field';
+    const lab = document.createElement('label');
+    lab.className = 'pf-field-label';
+    lab.textContent = label;
+    field.appendChild(lab);
+
+    const picker = document.createElement('ha-entity-picker');
+    picker.hass = this._hass;
+    picker.value = value || '';
+    picker.style.display = 'block';
+    picker.addEventListener('value-changed', e => {
+      e.stopPropagation();
+      onChange(e.detail.value);
+    });
+    field.appendChild(picker);
+    return field;
+  }
+
+  _buildHaIconPicker(label, value, onChange) {
+    const field = document.createElement('div');
+    field.className = 'pf-field';
+    const lab = document.createElement('label');
+    lab.className = 'pf-field-label';
+    lab.textContent = label;
+    field.appendChild(lab);
+
+    const picker = document.createElement('ha-icon-picker');
+    picker.hass = this._hass;
+    picker.value = value || '';
+    picker.style.display = 'block';
+    picker.addEventListener('value-changed', e => {
+      e.stopPropagation();
+      onChange(e.detail.value);
+    });
+    field.appendChild(picker);
+    return field;
+  }
+
+  _buildColorMapping(statusIdx) {
+    const s = this._config.status[statusIdx];
+    if (!s.color_map || !Array.isArray(s.color_map)) s.color_map = [];
+
+    const container = document.createElement('div');
+    container.className = 'pf-field';
+
+    const label = document.createElement('label');
+    label.className = 'pf-field-label';
+    label.textContent = 'Color Mapping (state → color)';
+    container.appendChild(label);
+
+    // Existing mappings
+    s.color_map.forEach((mapping, idx) => {
+      const row = document.createElement('div');
+      row.className = 'pf-mapping-row';
+
+      const stateDiv = document.createElement('div');
+      stateDiv.className = 'pf-mapping-state';
+      const stateInput = document.createElement('input');
+      stateInput.type = 'text';
+      stateInput.value = mapping.state || '';
+      stateInput.placeholder = 'State (e.g. on, off, home)';
+      stateInput.addEventListener('change', e => {
+        this._config.status[statusIdx].color_map[idx].state = e.target.value;
+        this._dispatch();
+      });
+      stateDiv.appendChild(stateInput);
+
+      const colorInput = document.createElement('input');
+      colorInput.type = 'color';
+      colorInput.className = 'pf-color-input';
+      colorInput.value = mapping.color || '#888888';
+      colorInput.addEventListener('input', e => {
+        this._config.status[statusIdx].color_map[idx].color = e.target.value;
+        this._dispatch();
+      });
+
+      const removeBtn = document.createElement('button');
+      removeBtn.className = 'pf-btn-icon';
+      removeBtn.textContent = '✕';
+      removeBtn.title = 'Remove mapping';
+      removeBtn.addEventListener('click', () => {
+        this._config.status[statusIdx].color_map.splice(idx, 1);
+        this._dispatch();
+        this._render();
+      });
+
+      row.appendChild(stateDiv);
+      row.appendChild(colorInput);
+      row.appendChild(removeBtn);
+      container.appendChild(row);
+    });
+
+    // Add button
+    const addBtn = document.createElement('button');
+    addBtn.className = 'pf-btn pf-btn-primary pf-btn-sm';
+    addBtn.textContent = '+ Add State';
+    addBtn.style.marginTop = '4px';
+    addBtn.addEventListener('click', () => {
+      this._config.status[statusIdx].color_map.push({ state: '', color: '#4caf50' });
+      this._dispatch();
+      this._render();
+    });
+    container.appendChild(addBtn);
 
     return container;
   }
