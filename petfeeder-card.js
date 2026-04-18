@@ -656,9 +656,11 @@ class PetfeederCard extends HTMLElement {
 
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     svg.setAttribute('viewBox', `0 0 ${size} ${size}`);
-    svg.style.width = '100%';
-    svg.style.height = '100%';
+    svg.setAttribute('width', `${size}`);
+    svg.setAttribute('height', `${size}`);
     svg.style.display = 'block';
+    svg.style.maxWidth = '100%';
+    svg.style.maxHeight = '100%';
 
     // Background track
     const bgCircle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
@@ -1294,26 +1296,26 @@ class PetfeederCard extends HTMLElement {
 
     const style = `
       :host{display:block;box-sizing:border-box;padding:0;max-width:800px;margin:0 auto;font-family:Roboto, sans-serif}
-      .card{border-radius:12px;overflow:visible;background:var(--ha-card-background, #fff);box-shadow:var(--ha-card-box-shadow, 0 2px 6px rgba(0,0,0,0.1));display:flex;flex-direction:column}
-      .card-header{background:${headerBg};padding:20px 16px 0;text-align:center;position:relative;overflow:visible}
+      .card{border-radius:12px;overflow:hidden;background:var(--ha-card-background, #fff);box-shadow:var(--ha-card-box-shadow, 0 2px 6px rgba(0,0,0,0.1));display:flex;flex-direction:column}
+      .card-header{background:${headerBg};padding:20px 16px 0;text-align:center;position:relative}
       .pet-name{font-size:16px;font-weight:500;color:var(--primary-text-color,#333);display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:4px}
       .pet-name img{width:28px;height:28px;border-radius:50%;object-fit:cover}
       .sub-label{font-size:12px;color:var(--secondary-text-color,#888);margin-bottom:16px}
-      .header-main{display:flex;align-items:center;justify-content:center;gap:0;padding:0 8px}
+      .header-main{display:flex;align-items:stretch;justify-content:center;gap:0;padding:0 8px}
       .header-left{flex:0 0 100px;display:flex;flex-direction:column;gap:8px;align-items:center;padding:8px 4px}
       .header-center{flex:1;display:flex;flex-direction:column;align-items:center;padding:0 12px}
-      .header-right{flex:0 1 auto;display:flex;flex-direction:column;gap:4px;align-items:stretch;padding:8px 12px;margin:0 8px;min-width:100px;max-width:160px;overflow:visible}
+      .header-right{flex:0 0 120px;display:flex;flex-direction:column;gap:3px;align-items:stretch;padding:8px 4px;margin:0;justify-content:center}
       .left-status-panel{display:flex;flex-direction:column;gap:8px;width:100%}
       .left-status-item{display:flex;flex-direction:column;align-items:center;gap:2px;padding:6px 8px;background:transparent;border-radius:6px;border:none}
       .left-status-icon{font-size:28px;color:#888;display:flex;align-items:center;justify-content:center}
       .left-status-name{font-size:11px;color:var(--secondary-text-color,#888);text-align:center;word-break:break-word;max-width:80px;font-weight:500}
       .left-status-state{font-size:10px;color:var(--secondary-text-color,#888);text-align:center}
-      .dial-container{position:relative;width:200px;height:200px;margin:0 auto;aspect-ratio:1/1}
+      .dial-container{position:relative;width:200px;height:200px;margin:0 auto}
       .dial-center{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center}
       .dial-grams{font-size:48px;font-weight:300;color:var(--primary-text-color,#333);line-height:1}
       .dial-label{font-size:12px;color:var(--secondary-text-color,#888);margin-top:4px}
       .next-schedule-row{margin-top:8px;margin-bottom:12px;font-size:13px;color:var(--secondary-text-color,#888);text-align:center}
-      .tab-btn{width:100%;padding:10px 8px;border:none;background:var(--secondary-background-color,#f5f5f5);color:var(--secondary-text-color,#888);font-size:11px;font-weight:500;cursor:pointer;transition:all 0.2s;border-radius:6px;text-align:center;white-space:nowrap;border:1px solid var(--divider-color,#e0e0e0)}
+      .tab-btn{width:100%;padding:6px 6px;border:none;background:var(--secondary-background-color,#f5f5f5);color:var(--secondary-text-color,#888);font-size:10px;font-weight:500;cursor:pointer;transition:all 0.2s;border-radius:6px;text-align:center;white-space:nowrap;border:1px solid var(--divider-color,#e0e0e0);box-sizing:border-box;line-height:1.2}
       .tab-btn:hover{background:var(--ha-card-background,#fff);border-color:${accentColor}}
       .tab-btn.active{color:${accentColor};background:var(--ha-card-background,#fff);border-color:${accentColor};font-weight:600}
       .tab-content-area{background:${contentBg};padding:16px 16px 48px;border-top:1px solid var(--divider-color,#e0e0e0);min-height:60px;position:relative;max-height:0;overflow:hidden;opacity:0;padding-top:0;padding-bottom:0;border-top:none;transition:max-height 0.4s ease-out,opacity 0.3s ease-out,padding 0.4s ease-out,border-top 0s 0.4s}
@@ -1381,7 +1383,7 @@ class PetfeederCard extends HTMLElement {
         .header-main{gap:0;padding:0 4px}
         .header-left{flex:0 0 100px;padding:4px 2px;gap:4px}
         .header-center{padding:0;flex:1}
-        .header-right{flex:0 1 auto;min-width:90px;max-width:120px;padding:3px 2px;gap:2px;overflow:visible}
+        .header-right{flex:0 0 100px;padding:4px 2px;gap:2px}
         .dial-container{width:140px;height:140px;margin:0 8px}
         .dial-grams{font-size:36px}
         .dial-label{font-size:10px;margin-top:2px}
@@ -1399,7 +1401,7 @@ class PetfeederCard extends HTMLElement {
         .header-main{gap:0;padding:0 2px}
         .header-left{flex:0 0 80px;padding:3px 1px;gap:3px}
         .header-center{padding:0;flex:1}
-        .header-right{flex:0 1 auto;min-width:80px;max-width:100px;padding:2px 2px;gap:2px;overflow:visible}
+        .header-right{flex:0 0 90px;padding:2px 1px;gap:1px}
         .dial-container{width:120px;height:120px;margin:0 6px}
         .dial-grams{font-size:32px}
         .dial-label{font-size:9px;margin-top:1px}
