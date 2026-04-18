@@ -79,23 +79,20 @@ class PetfeederCard extends HTMLElement {
         }
       }
 
-      // If icon is available, display it
+      // Display colored circle (and icon name as fallback text)
+      const dot = document.createElement('div');
+      dot.style.cssText = `width:20px;height:20px;border-radius:50%;background:${color};display:flex;align-items:center;justify-content:center;font-size:10px;color:#fff;font-weight:bold;flex-shrink:0;`;
       if (s.icon) {
-        const iconDiv = document.createElement('div');
-        iconDiv.style.cssText = `width:24px;height:24px;background:${color};mask-image:url('data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22%3E%3Cpath d=%22M12,2A10,10,0,1,0,22,12,10,10,0,0,0,12,2Zm0,2a8,8,0,1,1-8,8,8,8,0,0,1,8-8Z%22/%3E%3C/svg%3E');mask-size:cover;-webkit-mask-image:url('data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22%3E%3Cpath d=%22M12,2A10,10,0,1,0,22,12,10,10,0,0,0,12,2Zm0,2a8,8,0,1,1-8,8,8,8,0,0,1,8-8Z%22/%3E%3C/svg%3E');-webkit-mask-size:cover;`;
-        iconDiv.innerHTML = `<ha-icon icon="${s.icon}" style="color:${color};width:24px;height:24px;"></ha-icon>`;
-        item.appendChild(iconDiv);
-      } else {
-        // Fallback to colored dot if no icon
-        const dot = document.createElement('div');
-        dot.style.cssText = `width:14px;height:14px;border-radius:50%;background:${color};`;
-        item.appendChild(dot);
+        // Extract last part of icon name (e.g., "food-apple" from "mdi:food-apple")
+        const iconName = s.icon.split(':').pop().substring(0, 2).toUpperCase();
+        dot.textContent = iconName;
       }
+      item.appendChild(dot);
 
       // Display name/label if available
       if (s.name) {
         const nameDiv = document.createElement('div');
-        nameDiv.style.cssText = 'font-size:12px;color:#666;margin-left:6px;';
+        nameDiv.style.cssText = 'font-size:13px;color:#666;margin-left:8px;font-weight:500;';
         nameDiv.textContent = s.name;
         item.appendChild(nameDiv);
       }
@@ -404,7 +401,10 @@ class PetfeederCardEditor extends HTMLElement {
       const iconPreview = document.createElement('div');
       iconPreview.className = 'icon-preview';
       if (s.icon) {
-        iconPreview.innerHTML = `<ha-icon icon="${s.icon}" style="width:20px;height:20px;"></ha-icon>`;
+        const iconName = s.icon.split(':').pop().substring(0, 2).toUpperCase();
+        iconPreview.textContent = iconName;
+        iconPreview.style.fontWeight = '600';
+        iconPreview.style.color = '#2979f0';
       } else {
         iconPreview.style.color = '#999';
         iconPreview.textContent = '○';
@@ -430,11 +430,13 @@ class PetfeederCardEditor extends HTMLElement {
       nameInput.addEventListener('change', e => {
         this._setByPath(`status.${i}.name`, e.target.value || null);
         this._dispatch();
-        this._render();
       });
       nameCB.addEventListener('change', e => {
-        nameInput.disabled = !e.target.checked;
-        if (!e.target.checked) this._setByPath(`status.${i}.name`, null);
+        if (e.target.checked) {
+          this._setByPath(`status.${i}.name`, nameInput.value || `Status ${i + 1}`);
+        } else {
+          this._setByPath(`status.${i}.name`, null);
+        }
         this._dispatch();
         this._render();
       });
@@ -464,11 +466,13 @@ class PetfeederCardEditor extends HTMLElement {
       iconInput.addEventListener('change', e => {
         this._setByPath(`status.${i}.icon`, e.target.value || null);
         this._dispatch();
-        this._render();
       });
       iconCB.addEventListener('change', e => {
-        iconInput.disabled = !e.target.checked;
-        if (!e.target.checked) this._setByPath(`status.${i}.icon`, null);
+        if (e.target.checked) {
+          this._setByPath(`status.${i}.icon`, iconInput.value || 'mdi:circle');
+        } else {
+          this._setByPath(`status.${i}.icon`, null);
+        }
         this._dispatch();
         this._render();
       });
