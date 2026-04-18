@@ -5,24 +5,21 @@ class PetfeederCard extends HTMLElement {
     this._popupOpen = false;
     this._shadow = this.attachShadow({ mode: 'open' });
     this._hasRendered = false;
-    this._visibilityObserver = null;
+    this._domBuilt = false;
   }
 
   connectedCallback() {
     // Re-render when element is added to the DOM (e.g., popup opens)
     if (this._hass && this._config) {
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          this.render();
-        });
-      });
+      this._domBuilt = false;
+      requestAnimationFrame(() => this.render());
     }
   }
 
   disconnectedCallback() {
-    if (this._visibilityObserver) {
-      this._visibilityObserver.disconnect();
-      this._visibilityObserver = null;
+    if (this._renderTimer) {
+      clearTimeout(this._renderTimer);
+      this._renderTimer = null;
     }
   }
 
@@ -72,11 +69,10 @@ class PetfeederCard extends HTMLElement {
     }, config || {});
     this._activeTab = null;
     
-    // Delay render to ensure element is attached and config is fully set
-    if (this._hasRendered) {
+    // Config changed - force full DOM rebuild
+    this._domBuilt = false;
+    if (this._hass) {
       this.render();
-    } else {
-      requestAnimationFrame(() => this.render());
     }
   }
 
@@ -250,16 +246,127 @@ class PetfeederCard extends HTMLElement {
   }
 
   set hass(hass) {
-    const oldHass = this._hass;
     this._hass = hass;
     if (this._popupOpen) return;
 
-    // Throttle renders to avoid excessive DOM rebuilds (e.g., inside bubble card popups)
+    // If DOM hasn't been built yet, do a full render
+    if (!this._domBuilt) {
+      this.render();
+      return;
+    }
+
+    // DOM already built - only update dynamic values in-place (no full rebuild)
     if (this._renderTimer) return;
     this._renderTimer = setTimeout(() => {
       this._renderTimer = null;
-      this.render();
-    }, 100);
+      this._updateDynamic();
+    }, 200);
+  }
+
+  // Update only the dynamic parts of the card without rebuilding the DOM
+  _updateDynamic() {
+    if (!this._shadow || !this._hass) return;
+
+    if (this._config.compact) {
+      return this._updateDynamicCompact();
+    }
+
+    // Update dial center text
+    const dialGrams = this._shadow.querySelector('.dial-grams');
+    const dialLabel = this._shadow.querySelector('.dial-label');
+    if (dialGrams && dialLabel) {
+      const todayDoses = this._getTodayDoses();
+      const todayGrams = this._getTodayGrams();
+      dialGrams.textContent = todayDoses;
+      dialLabel.textContent = `${this._t('portions')} (${Math.round(todayGrams)}g)`;
+    }
+
+    // Update next schedule text
+    const nextRow = this._shadow.querySelector('.next-schedule-row');
+    if (nextRow) {
+      const nextSchedule = this._computeNextSchedule();
+      if (nextSchedule) {
+        const s = nextSchedule.schedule;
+        nextRow.textContent = `${this._t('next')}: ${String(s.hour).padStart(2, '0')}:${String(s.minute).padStart(2, '0')} (${s.doses} ${this._t('portions_label')})`;
+      } else {
+        nextRow.textContent = this._t('no_upcoming');
+      }
+    }
+
+    // Update left status states
+    const statusItems = this._shadow.querySelectorAll('.left-status-item');
+    const leftStatus = this._config.left_status || [];
+    statusItems.forEach((itemEl, idx) => {
+      if (idx >= leftStatus.length) return;
+      const item = leftStatus[idx];
+      if (!item || !item.entity) return;
+      const st = this._hass.states[item.entity];
+      if (!st) return;
+
+      // Update icon color
+      const iconDiv = itemEl.querySelector('.left-status-icon');
+      if (iconDiv) {
+        let color = '#888';
+        if (item.color_map && Array.isArray(item.color_map)) {
+          const mapping = item.color_map.find(m => m.state === st.state);
+          if (mapping) color = mapping.color;
+        } else {
+          color = st.state === 'on' || st.state === 'home' ? '#4caf50' : '#f44336';
+        }
+        iconDiv.style.color = color;
+      }
+
+      // Update state text
+      const stateDiv = itemEl.querySelector('.left-status-state');
+      if (stateDiv) {
+        stateDiv.textContent = this._getFriendlyState(st);
+      }
+    });
+  }
+
+  // Update dynamic parts of compact card
+  _updateDynamicCompact() {
+    // Update stats
+    const statValues = this._shadow.querySelectorAll('.compact-stat-value');
+    if (statValues.length >= 3) {
+      const dosesState = this._config.today_doses_entity ? this._hass?.states[this._config.today_doses_entity] : null;
+      statValues[0].textContent = dosesState ? parseInt(dosesState.state) || 0 : 0;
+
+      const gramsState = this._config.today_grams_entity ? this._hass?.states[this._config.today_grams_entity] : null;
+      statValues[1].textContent = (gramsState ? parseInt(gramsState.state) || 0 : 0) + 'g';
+
+      const nextSchedule = this._computeNextSchedule();
+      if (nextSchedule) {
+        const s = nextSchedule.schedule;
+        statValues[2].textContent = `${String(s.hour).padStart(2, '0')}:${String(s.minute).padStart(2, '0')}`;
+      } else {
+        statValues[2].textContent = '-';
+      }
+    }
+
+    // Update compact status indicators
+    const statusItems = this._shadow.querySelectorAll('.compact-status-item');
+    const compactStatus = this._config.compact_status || [];
+    statusItems.forEach((itemEl, idx) => {
+      if (idx >= compactStatus.length) return;
+      const item = compactStatus[idx];
+      if (!item || !item.entity) return;
+      const st = this._hass.states[item.entity];
+      if (!st) return;
+
+      // Update icon color
+      const iconSpan = itemEl.querySelector('span[style*="color"]');
+      if (iconSpan) {
+        let color = '#888';
+        if (item.color_map && Array.isArray(item.color_map)) {
+          const mapping = item.color_map.find(m => m.state === st.state);
+          if (mapping) color = mapping.color;
+        } else {
+          color = st.state === 'on' || st.state === 'home' ? '#4caf50' : '#f44336';
+        }
+        iconSpan.style.color = color;
+      }
+    });
   }
 
   // --- Schedule data helpers ---
@@ -1277,8 +1384,10 @@ class PetfeederCard extends HTMLElement {
 
   render() {
     if (!this._shadow) return;
+    if (!this._hass) return;
 
     this._hasRendered = true;
+    this._domBuilt = true;
 
     // Use compact rendering if enabled
     if (this._config.compact) {
@@ -1304,7 +1413,7 @@ class PetfeederCard extends HTMLElement {
       .header-main{display:flex;align-items:stretch;justify-content:center;gap:0;padding:0 8px}
       .header-left{flex:0 0 100px;display:flex;flex-direction:column;gap:8px;align-items:center;padding:8px 4px}
       .header-center{flex:1;display:flex;flex-direction:column;align-items:center;padding:0 12px}
-      .header-right{flex:0 0 120px;display:flex;flex-direction:column;gap:3px;align-items:stretch;padding:8px 4px;margin:0;justify-content:center}
+      .header-right{flex:0 0 120px;display:flex;flex-direction:column;gap:3px;align-items:stretch;padding:4px 4px;margin:0;justify-content:space-evenly}
       .left-status-panel{display:flex;flex-direction:column;gap:8px;width:100%}
       .left-status-item{display:flex;flex-direction:column;align-items:center;gap:2px;padding:6px 8px;background:transparent;border-radius:6px;border:none}
       .left-status-icon{font-size:28px;color:#888;display:flex;align-items:center;justify-content:center}
@@ -1315,7 +1424,7 @@ class PetfeederCard extends HTMLElement {
       .dial-grams{font-size:48px;font-weight:300;color:var(--primary-text-color,#333);line-height:1}
       .dial-label{font-size:12px;color:var(--secondary-text-color,#888);margin-top:4px}
       .next-schedule-row{margin-top:8px;margin-bottom:12px;font-size:13px;color:var(--secondary-text-color,#888);text-align:center}
-      .tab-btn{width:100%;padding:6px 6px;border:none;background:var(--secondary-background-color,#f5f5f5);color:var(--secondary-text-color,#888);font-size:10px;font-weight:500;cursor:pointer;transition:all 0.2s;border-radius:6px;text-align:center;white-space:nowrap;border:1px solid var(--divider-color,#e0e0e0);box-sizing:border-box;line-height:1.2}
+      .tab-btn{width:100%;flex:1;padding:4px 6px;border:none;background:var(--secondary-background-color,#f5f5f5);color:var(--secondary-text-color,#888);font-size:10px;font-weight:500;cursor:pointer;transition:all 0.2s;border-radius:6px;text-align:center;white-space:nowrap;border:1px solid var(--divider-color,#e0e0e0);box-sizing:border-box;line-height:1.2;display:flex;align-items:center;justify-content:center}
       .tab-btn:hover{background:var(--ha-card-background,#fff);border-color:${accentColor}}
       .tab-btn.active{color:${accentColor};background:var(--ha-card-background,#fff);border-color:${accentColor};font-weight:600}
       .tab-content-area{background:${contentBg};padding:16px 16px 48px;border-top:1px solid var(--divider-color,#e0e0e0);min-height:60px;position:relative;max-height:0;overflow:hidden;opacity:0;padding-top:0;padding-bottom:0;border-top:none;transition:max-height 0.4s ease-out,opacity 0.3s ease-out,padding 0.4s ease-out,border-top 0s 0.4s}
