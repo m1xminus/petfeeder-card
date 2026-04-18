@@ -14,6 +14,7 @@ class PetfeederCard extends HTMLElement {
       menu: [],
       last_feed_entity: null,
       today_grams_entity: null,
+      today_doses_entity: null,
       schedules: [],
       status_label: 'status:',
       header_color: '#ffffff',
@@ -41,6 +42,7 @@ class PetfeederCard extends HTMLElement {
       status_label: 'status:',
       last_feed_entity: '',
       today_grams_entity: '',
+      today_doses_entity: '',
       schedules: [],
       menu: []
     };
@@ -114,6 +116,12 @@ class PetfeederCard extends HTMLElement {
       if (s.enabled) total += s.grams;
     });
     return total || 1;
+  }
+
+  _getTodayDoses() {
+    if (!this._config.today_doses_entity || !this._hass) return 0;
+    const st = this._hass.states[this._config.today_doses_entity];
+    return st ? parseInt(st.state) || 0 : 0;
   }
 
   // --- SVG Dial ---
@@ -220,14 +228,15 @@ class PetfeederCard extends HTMLElement {
     // Center text
     const centerText = document.createElement('div');
     centerText.className = 'dial-center';
-    const gramsNum = document.createElement('div');
-    gramsNum.className = 'dial-grams';
-    gramsNum.textContent = Math.round(todayGrams);
-    const gramsLabel = document.createElement('div');
-    gramsLabel.className = 'dial-label';
-    gramsLabel.textContent = `Approx. ${Math.round(todayGrams)}g`;
-    centerText.appendChild(gramsNum);
-    centerText.appendChild(gramsLabel);
+    const dosesNum = document.createElement('div');
+    dosesNum.className = 'dial-grams';
+    const todayDoses = this._getTodayDoses();
+    dosesNum.textContent = todayDoses;
+    const dosesLabel = document.createElement('div');
+    dosesLabel.className = 'dial-label';
+    dosesLabel.textContent = `Portions (${Math.round(todayGrams)}g)`;
+    centerText.appendChild(dosesNum);
+    centerText.appendChild(dosesLabel);
     container.appendChild(centerText);
 
     return container;
@@ -252,7 +261,6 @@ class PetfeederCard extends HTMLElement {
     schedules.forEach((sched, idx) => {
       const item = document.createElement('div');
       item.className = 'schedule-item' + (sched.enabled ? '' : ' disabled');
-      item.style.cursor = 'pointer';
 
       const timeline = document.createElement('div');
       timeline.className = 'timeline-marker';
@@ -264,6 +272,11 @@ class PetfeederCard extends HTMLElement {
         timeline.appendChild(line);
       }
       timeline.appendChild(dot);
+
+      // Middle section: time + doses (clickable)
+      const middle = document.createElement('div');
+      middle.style.cssText = 'flex:1;cursor:pointer';
+      middle.addEventListener('click', () => this._openSchedulePopup(sched));
 
       const timeDiv = document.createElement('div');
       timeDiv.className = 'schedule-time';
@@ -281,16 +294,57 @@ class PetfeederCard extends HTMLElement {
         dosesDiv.textContent = `${sched.doses} Portions (Approx. ${sched.grams}g)`;
       }
 
-      item.appendChild(timeline);
-      item.appendChild(timeDiv);
-      item.appendChild(dosesDiv);
+      middle.appendChild(timeDiv);
+      middle.appendChild(dosesDiv);
 
-      item.addEventListener('click', () => this._openSchedulePopup(sched));
+      // Right section: up/down buttons
+      const controls = document.createElement('div');
+      controls.style.cssText = 'display:flex;gap:4px;flex-shrink:0';
+
+      if (idx > 0) {
+        const upBtn = document.createElement('button');
+        upBtn.textContent = '↑';
+        upBtn.style.cssText = 'width:28px;height:28px;padding:0;border:1px solid var(--divider-color);border-radius:4px;background:var(--ha-card-background);cursor:pointer;font-size:16px';
+        upBtn.addEventListener('click', e => {
+          e.stopPropagation();
+          this._moveSchedule(sched.index, -1);
+        });
+        controls.appendChild(upBtn);
+      }
+
+      if (idx < schedules.length - 1) {
+        const downBtn = document.createElement('button');
+        downBtn.textContent = '↓';
+        downBtn.style.cssText = 'width:28px;height:28px;padding:0;border:1px solid var(--divider-color);border-radius:4px;background:var(--ha-card-background);cursor:pointer;font-size:16px';
+        downBtn.addEventListener('click', e => {
+          e.stopPropagation();
+          this._moveSchedule(sched.index, 1);
+        });
+        controls.appendChild(downBtn);
+      }
+
+      item.appendChild(timeline);
+      item.appendChild(middle);
+      item.appendChild(controls);
 
       container.appendChild(item);
     });
 
     return container;
+  }
+
+  // --- Schedule reordering ---
+
+  _moveSchedule(index, direction) {
+    const schedules = this._config.schedules || [];
+    const newIdx = index + direction;
+    if (newIdx < 0 || newIdx >= schedules.length) return;
+    [schedules[index], schedules[newIdx]] = [schedules[newIdx], schedules[index]];
+    this.dispatchEvent(new CustomEvent('config-changed', {
+      detail: { config: JSON.parse(JSON.stringify(this._config)) },
+      bubbles: true,
+      composed: true
+    }));
   }
 
   // --- Edit Popup ---
@@ -372,14 +426,14 @@ class PetfeederCard extends HTMLElement {
           entity_id: cfg.enabled_entity
         });
       }
-      overlay.remove();
     });
     popup.appendChild(saveBtn);
 
     // Close
-    const closeBtn = document.createElement('div');
+    const closeBtn = document.createElement('button');
     closeBtn.className = 'popup-close';
     closeBtn.textContent = '\u2715';
+    closeBtn.style.cssText = 'position:absolute;top:12px;right:12px;width:28px;height:28px;border-radius:50%;border:none;background:none;cursor:pointer;color:var(--secondary-text-color,#888);font-size:16px;padding:0';
     closeBtn.addEventListener('click', () => overlay.remove());
     popup.appendChild(closeBtn);
 
@@ -539,7 +593,7 @@ class PetfeederCard extends HTMLElement {
 
     const subLabel = document.createElement('div');
     subLabel.className = 'sub-label';
-    subLabel.textContent = 'Portions dispensed today';
+    subLabel.textContent = 'Portions & Grams dispensed today';
     header.appendChild(subLabel);
 
     header.appendChild(this._renderDial());
@@ -715,6 +769,12 @@ class PetfeederCardEditor extends HTMLElement {
       // Today Grams Entity
       body.appendChild(this._buildHaEntityPicker('Today Grams Entity', this._config.today_grams_entity || '', v => {
         this._config.today_grams_entity = v || null;
+        this._dispatch();
+      }));
+
+      // Today Doses Entity
+      body.appendChild(this._buildHaEntityPicker('Today Doses Entity', this._config.today_doses_entity || '', v => {
+        this._config.today_doses_entity = v || null;
         this._dispatch();
       }));
 
