@@ -280,7 +280,6 @@ class PetfeederCard extends HTMLElement {
 
   _renderScheduleTimeline() {
     const container = document.createElement('div');
-    container.className = 'schedule-section';
 
     const schedules = this._getScheduleData();
 
@@ -527,7 +526,6 @@ class PetfeederCard extends HTMLElement {
 
   _renderManualFeedTab() {
     const container = document.createElement('div');
-    container.className = 'tab-content-manual-feed';
 
     const cfg = this._config.tabs_config?.manual_feed || {};
 
@@ -601,7 +599,6 @@ class PetfeederCard extends HTMLElement {
 
   _renderStatsTab() {
     const container = document.createElement('div');
-    container.className = 'tab-content-stats';
 
     const stats = this._config.tabs_config?.stats || [];
 
@@ -647,7 +644,6 @@ class PetfeederCard extends HTMLElement {
 
   _renderSettingsTab() {
     const container = document.createElement('div');
-    container.className = 'tab-content-settings';
 
     const settings = this._config.tabs_config?.settings || [];
 
