@@ -67,15 +67,25 @@ class PetfeederCard extends HTMLElement {
       if (s.entity && this._hass) {
         const st = this._hass.states[s.entity];
         if (st) {
-          if (s.color_map) {
+          // Check color_map array for matching state
+          if (s.color_map && Array.isArray(s.color_map)) {
+            const mapping = s.color_map.find(m => m.state === st.state);
+            if (mapping) {
+              color = mapping.color;
+            }
+          } else if (typeof s.color_map === 'string') {
+            // Fallback for legacy JSON format
             try {
-              const map = typeof s.color_map === 'string' ? JSON.parse(s.color_map) : s.color_map;
+              const map = JSON.parse(s.color_map);
               if (map[st.state]) color = map[st.state];
             } catch (e) {}
-          } else if (st.state === 'on' || st.state === 'home' || st.state === 'connected') {
-            color = '#4caf50';
-          } else if (st.state === 'off' || st.state === 'unavailable' || st.state === 'disconnected') {
-            color = '#f44336';
+          } else {
+            // Default color logic if no mapping
+            if (st.state === 'on' || st.state === 'home' || st.state === 'connected') {
+              color = '#4caf50';
+            } else if (st.state === 'off' || st.state === 'unavailable' || st.state === 'disconnected') {
+              color = '#f44336';
+            }
           }
         }
       }
@@ -285,6 +295,7 @@ class PetfeederCardEditor extends HTMLElement {
   constructor() {
     super();
     this._config = {};
+    this._hass = null;
     this._shadow = this.attachShadow({ mode: 'open' });
     this._selectedMenuIdx = 0;
     this._expandedSections = {}; // Track which sections are expanded
@@ -292,6 +303,11 @@ class PetfeederCardEditor extends HTMLElement {
 
   setConfig(config) {
     this._config = config || {};
+    this._render();
+  }
+
+  set hass(hass) {
+    this._hass = hass;
     this._render();
   }
 
@@ -495,8 +511,14 @@ class PetfeederCardEditor extends HTMLElement {
       iconRow.appendChild(iconInput);
       item.appendChild(iconRow);
 
-      // Color map (condition)
-      item.appendChild(this._makeInput(`status.${i}.color_map`, 'Color Map (JSON):', s.color_map || '', `{"on":"#4caf50","off":"#f44336"}`));
+      // Color map (condition) - visual builder
+      const colorMapLabel = document.createElement('div');
+      colorMapLabel.className = 'label';
+      colorMapLabel.textContent = 'Color Mapping:';
+      colorMapLabel.style.marginTop = '10px';
+      item.appendChild(colorMapLabel);
+      
+      item.appendChild(this._makeColorMapBuilder(i));
 
       headerSection.content.appendChild(item);
     }
@@ -695,6 +717,127 @@ class PetfeederCardEditor extends HTMLElement {
         cur = cur[parts[i]];
       }
     }
+  }
+
+  _makeColorMapBuilder(statusIdx) {
+    const container = document.createElement('div');
+    container.style.marginBottom = '10px';
+    
+    const s = (this._config.status && this._config.status[statusIdx]) || {};
+    const colorMap = s.color_map || [];
+    if (!Array.isArray(colorMap)) {
+      this._config.status[statusIdx].color_map = [];
+    }
+
+    // Entity selector
+    const entityRow = document.createElement('div');
+    entityRow.className = 'row';
+    const entityLabel = document.createElement('div');
+    entityLabel.className = 'label-small';
+    entityLabel.textContent = 'Select Entity:';
+    const entitySelect = document.createElement('select');
+    entitySelect.className = 'input';
+    entitySelect.style.marginBottom = '8px';
+    
+    // Add entity options
+    const option = document.createElement('option');
+    option.value = '';
+    option.textContent = '-- Choose entity --';
+    entitySelect.appendChild(option);
+    
+    if (this._hass) {
+      Object.keys(this._hass.states).forEach(entityId => {
+        const opt = document.createElement('option');
+        opt.value = entityId;
+        opt.textContent = entityId;
+        entitySelect.appendChild(opt);
+      });
+    }
+
+    const addMappingBtn = document.createElement('button');
+    addMappingBtn.className = 'btn btn-sm';
+    addMappingBtn.textContent = '+ Add State Mapping';
+    addMappingBtn.addEventListener('click', () => {
+      const selectedEntity = entitySelect.value;
+      if (!selectedEntity) return;
+      
+      if (!this._config.status[statusIdx].color_map) {
+        this._config.status[statusIdx].color_map = [];
+      }
+      
+      // Get available states from entity
+      if (this._hass && this._hass.states[selectedEntity]) {
+        const entity = this._hass.states[selectedEntity];
+        const availableStates = entity.attributes?.options || [entity.state];
+        
+        if (availableStates.length > 0) {
+          const state = availableStates[0];
+          this._config.status[statusIdx].color_map.push({ state, color: '#888888' });
+          this._dispatch();
+          this._render();
+        }
+      }
+    });
+    
+    entityRow.appendChild(entityLabel);
+    entityRow.appendChild(entitySelect);
+    entityRow.appendChild(addMappingBtn);
+    container.appendChild(entityRow);
+
+    // Current mappings
+    if (colorMap && Array.isArray(colorMap) && colorMap.length > 0) {
+      const mappingsTitle = document.createElement('div');
+      mappingsTitle.style.fontWeight = '600';
+      mappingsTitle.style.marginTop = '10px';
+      mappingsTitle.style.marginBottom = '6px';
+      mappingsTitle.textContent = 'State Mappings:';
+      container.appendChild(mappingsTitle);
+
+      colorMap.forEach((mapping, idx) => {
+        const mappingRow = document.createElement('div');
+        mappingRow.style.display = 'flex';
+        mappingRow.style.gap = '6px';
+        mappingRow.style.marginBottom = '6px';
+        mappingRow.style.alignItems = 'center';
+
+        // State display
+        const stateSpan = document.createElement('div');
+        stateSpan.style.minWidth = '80px';
+        stateSpan.style.fontWeight = '500';
+        stateSpan.textContent = mapping.state || 'unknown';
+
+        // Color picker
+        const colorInput = document.createElement('input');
+        colorInput.type = 'color';
+        colorInput.value = mapping.color || '#888888';
+        colorInput.style.width = '50px';
+        colorInput.style.height = '32px';
+        colorInput.style.cursor = 'pointer';
+        colorInput.style.border = '1px solid #ccc';
+        colorInput.style.borderRadius = '4px';
+        colorInput.addEventListener('change', e => {
+          this._config.status[statusIdx].color_map[idx].color = e.target.value;
+          this._dispatch();
+        });
+
+        // Remove button
+        const removeBtn = document.createElement('button');
+        removeBtn.className = 'btn btn-danger btn-sm';
+        removeBtn.textContent = '✕';
+        removeBtn.addEventListener('click', () => {
+          this._config.status[statusIdx].color_map.splice(idx, 1);
+          this._dispatch();
+          this._render();
+        });
+
+        mappingRow.appendChild(stateSpan);
+        mappingRow.appendChild(colorInput);
+        mappingRow.appendChild(removeBtn);
+        container.appendChild(mappingRow);
+      });
+    }
+
+    return container;
   }
 }
 
