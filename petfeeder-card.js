@@ -67,6 +67,32 @@ class PetfeederCard extends HTMLElement {
         custom_feed: 'Custom Feed',
         send: 'Send',
         disable_animations: 'Disable Animations',
+        // State translations
+        state_open: 'Open',
+        state_closed: 'Closed',
+        state_locked: 'Locked',
+        state_unlocked: 'Unlocked',
+        state_motion: 'Motion',
+        state_clear: 'Clear',
+        state_occupied: 'Occupied',
+        state_home: 'Home',
+        state_away: 'Away',
+        state_problem: 'Problem',
+        state_ok: 'OK',
+        state_safe: 'Safe',
+        state_unsafe: 'Unsafe',
+        state_wet: 'Wet',
+        state_dry: 'Dry',
+        state_smoke: 'Smoke',
+        state_vibration: 'Vibration',
+        state_still: 'Still',
+        // Popup translations
+        schedule: 'Schedule',
+        hour: 'Hour',
+        minute: 'Minute',
+        doses: 'Doses',
+        enabled: 'Enabled',
+        save: 'Save',
       },
       pt: {
         portions_grams_today: 'Porções & Gramas dispensadas hoje',
@@ -81,6 +107,32 @@ class PetfeederCard extends HTMLElement {
         custom_feed: 'Alimentação Personalizada',
         send: 'Enviar',
         disable_animations: 'Desativar Animações',
+        // State translations
+        state_open: 'Aberto',
+        state_closed: 'Fechado',
+        state_locked: 'Trancado',
+        state_unlocked: 'Destrancado',
+        state_motion: 'Movimento',
+        state_clear: 'Claro',
+        state_occupied: 'Ocupado',
+        state_home: 'Casa',
+        state_away: 'Fora',
+        state_problem: 'Problema',
+        state_ok: 'OK',
+        state_safe: 'Seguro',
+        state_unsafe: 'Inseguro',
+        state_wet: 'Molhado',
+        state_dry: 'Seco',
+        state_smoke: 'Fumaça',
+        state_vibration: 'Vibração',
+        state_still: 'Parado',
+        // Popup translations
+        schedule: 'Horário',
+        hour: 'Hora',
+        minute: 'Minuto',
+        doses: 'Doses',
+        enabled: 'Ativado',
+        save: 'Salvar',
       }
     };
   }
@@ -98,24 +150,25 @@ class PetfeederCard extends HTMLElement {
     const deviceClass = state.attributes?.device_class;
     const rawState = state.state;
     
-    // Map device classes to friendly state names
+    // Map device classes to translation keys
     const stateMap = {
-      door: { on: 'Open', off: 'Closed' },
-      window: { on: 'Open', off: 'Closed' },
-      lock: { on: 'Locked', off: 'Unlocked' },
-      moisture: { on: 'Wet', off: 'Dry' },
-      motion: { on: 'Motion', off: 'Clear' },
-      occupancy: { on: 'Occupied', off: 'Clear' },
-      presence: { on: 'Home', off: 'Away' },
-      problem: { on: 'Problem', off: 'OK' },
-      safety: { on: 'Unsafe', off: 'Safe' },
-      smoke: { on: 'Smoke', off: 'Clear' },
-      vibration: { on: 'Vibration', off: 'Still' }
+      door: { on: 'state_open', off: 'state_closed' },
+      window: { on: 'state_open', off: 'state_closed' },
+      lock: { on: 'state_locked', off: 'state_unlocked' },
+      moisture: { on: 'state_wet', off: 'state_dry' },
+      motion: { on: 'state_motion', off: 'state_clear' },
+      occupancy: { on: 'state_occupied', off: 'state_clear' },
+      presence: { on: 'state_home', off: 'state_away' },
+      problem: { on: 'state_problem', off: 'state_ok' },
+      safety: { on: 'state_unsafe', off: 'state_safe' },
+      smoke: { on: 'state_smoke', off: 'state_clear' },
+      vibration: { on: 'state_vibration', off: 'state_still' }
     };
     
-    // Return friendly state if device_class mapping exists
+    // Return translated friendly state if device_class mapping exists
     if (deviceClass && stateMap[deviceClass]) {
-      return stateMap[deviceClass][rawState] || rawState;
+      const translationKey = stateMap[deviceClass][rawState];
+      return this._t(translationKey);
     }
     
     // Return raw state as fallback
@@ -288,7 +341,7 @@ class PetfeederCard extends HTMLElement {
       const segmentRad = (segmentDeg / 360) * circumference;
       let currentAngle = -90;
 
-      schedules.forEach((sched) => {
+      schedules.forEach((sched, idx) => {
         const offset = -((currentAngle + 90) / 360) * circumference;
 
         // Background segment
@@ -324,6 +377,26 @@ class PetfeederCard extends HTMLElement {
           fillSeg.setAttribute('stroke-dashoffset', `${offset}`);
           fillSeg.setAttribute('stroke-linecap', 'round');
           svg.appendChild(fillSeg);
+        }
+
+        // Add visible separator line at the end of each segment
+        if (idx < schedules.length) {
+          const angleAfterGap = currentAngle + segmentDeg + gap;
+          const angleRad = (angleAfterGap * Math.PI) / 180;
+          const x1 = cx + (radius - strokeWidth / 2) * Math.cos(angleRad);
+          const y1 = cy + (radius - strokeWidth / 2) * Math.sin(angleRad);
+          const x2 = cx + (radius + strokeWidth / 2) * Math.cos(angleRad);
+          const y2 = cy + (radius + strokeWidth / 2) * Math.sin(angleRad);
+
+          const dividerLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+          dividerLine.setAttribute('x1', x1);
+          dividerLine.setAttribute('y1', y1);
+          dividerLine.setAttribute('x2', x2);
+          dividerLine.setAttribute('y2', y2);
+          dividerLine.setAttribute('stroke', 'var(--divider-color, #ddd)');
+          dividerLine.setAttribute('stroke-width', '1.5');
+          dividerLine.setAttribute('opacity', '0.4');
+          svg.appendChild(dividerLine);
         }
 
         currentAngle += segmentDeg + gap;
@@ -480,24 +553,24 @@ class PetfeederCard extends HTMLElement {
 
     const popupTitle = document.createElement('div');
     popupTitle.className = 'popup-title';
-    popupTitle.textContent = `Schedule ${sched.index + 1}`;
+    popupTitle.textContent = `${this._t('schedule')} ${sched.index + 1}`;
     popup.appendChild(popupTitle);
 
     // Hour
-    popup.appendChild(this._popupRow('Hour', 'number', isNaN(sched.hour) ? '' : sched.hour, '0', '23'));
+    popup.appendChild(this._popupRow(this._t('hour'), 'number', isNaN(sched.hour) ? '' : sched.hour, '0', '23'));
 
     // Minute
-    popup.appendChild(this._popupRow('Minute', 'number', isNaN(sched.minute) ? '' : sched.minute, '0', '59'));
+    popup.appendChild(this._popupRow(this._t('minute'), 'number', isNaN(sched.minute) ? '' : sched.minute, '0', '59'));
 
     // Doses
-    popup.appendChild(this._popupRow('Doses', 'number', sched.doses || 1, '1', '50'));
+    popup.appendChild(this._popupRow(this._t('doses'), 'number', sched.doses || 1, '1', '50'));
 
     // Enabled toggle
     const enabledRow = document.createElement('div');
     enabledRow.className = 'popup-row';
     const enabledLabel = document.createElement('div');
     enabledLabel.className = 'popup-label';
-    enabledLabel.textContent = 'Enabled';
+    enabledLabel.textContent = this._t('enabled');
     const toggle = document.createElement('div');
     toggle.className = 'toggle' + (sched.enabled ? ' on' : '');
     toggle.innerHTML = '<div class="toggle-thumb"></div>';
@@ -513,7 +586,7 @@ class PetfeederCard extends HTMLElement {
     // Save
     const saveBtn = document.createElement('button');
     saveBtn.className = 'popup-save';
-    saveBtn.textContent = 'Save';
+    saveBtn.textContent = this._t('save');
     saveBtn.addEventListener('click', () => {
       const cfg = sched.config;
       const inputs = popup.querySelectorAll('.popup-input');
