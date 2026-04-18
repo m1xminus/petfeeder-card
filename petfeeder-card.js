@@ -235,8 +235,8 @@ class PetfeederCard extends HTMLElement {
 
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     svg.setAttribute('viewBox', `0 0 ${size} ${size}`);
-    svg.setAttribute('width', '200');
-    svg.setAttribute('height', '200');
+    svg.setAttribute('width', '100%');
+    svg.setAttribute('height', '100%');
 
     // Background track
     const bgCircle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
@@ -859,7 +859,7 @@ class PetfeederCard extends HTMLElement {
       .left-status-icon{font-size:28px;color:#888;display:flex;align-items:center;justify-content:center}
       .left-status-name{font-size:11px;color:var(--secondary-text-color,#888);text-align:center;word-break:break-word;max-width:80px;font-weight:500}
       .left-status-state{font-size:10px;color:var(--secondary-text-color,#888);text-align:center}
-      .dial-container{position:relative;width:200px;height:200px;margin:0 auto;flex-shrink:0}
+      .dial-container{position:relative;width:200px;height:200px;margin:0 auto}
       .dial-center{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center}
       .dial-grams{font-size:48px;font-weight:300;color:var(--primary-text-color,#333);line-height:1}
       .dial-label{font-size:12px;color:var(--secondary-text-color,#888);margin-top:4px}
