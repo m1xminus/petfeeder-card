@@ -91,6 +91,37 @@ class PetfeederCard extends HTMLElement {
     return translations[key] || PetfeederCard.TRANSLATIONS['en'][key] || key;
   }
 
+  // --- Get friendly state value ---
+  _getFriendlyState(state) {
+    if (!state) return 'N/A';
+    
+    const deviceClass = state.attributes?.device_class;
+    const rawState = state.state;
+    
+    // Map device classes to friendly state names
+    const stateMap = {
+      door: { on: 'Open', off: 'Closed' },
+      window: { on: 'Open', off: 'Closed' },
+      lock: { on: 'Locked', off: 'Unlocked' },
+      moisture: { on: 'Wet', off: 'Dry' },
+      motion: { on: 'Motion', off: 'Clear' },
+      occupancy: { on: 'Occupied', off: 'Clear' },
+      presence: { on: 'Home', off: 'Away' },
+      problem: { on: 'Problem', off: 'OK' },
+      safety: { on: 'Unsafe', off: 'Safe' },
+      smoke: { on: 'Smoke', off: 'Clear' },
+      vibration: { on: 'Vibration', off: 'Still' }
+    };
+    
+    // Return friendly state if device_class mapping exists
+    if (deviceClass && stateMap[deviceClass]) {
+      return stateMap[deviceClass][rawState] || rawState;
+    }
+    
+    // Return raw state as fallback
+    return rawState;
+  }
+
   static getConfigElement() {
     return document.createElement('petfeeder-card-editor');
   }
@@ -612,7 +643,7 @@ class PetfeederCard extends HTMLElement {
         stateDiv.className = 'left-status-state';
         const st = this._hass.states[item.entity];
         if (st) {
-          stateDiv.textContent = st.state;
+          stateDiv.textContent = this._getFriendlyState(st);
         }
         itemEl.appendChild(stateDiv);
       }
