@@ -1,0 +1,10 @@
+{
+  "domain": "petfeeder-card",
+  "name": "Petfeeder Card",
+  "version": "1.0.0",
+  "documentation": "https://github.com/your-repo/petfeeder-card",
+  "codeowners": [],
+  "config_flow": false,
+  "requirements": [],
+  "iot_class": "local_polling"
+}
