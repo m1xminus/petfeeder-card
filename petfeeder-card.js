@@ -8,6 +8,24 @@ class PetfeederCard extends HTMLElement {
     this._visibilityObserver = null;
   }
 
+  connectedCallback() {
+    // Re-render when element is added to the DOM (e.g., popup opens)
+    if (this._hass && this._config) {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          this.render();
+        });
+      });
+    }
+  }
+
+  disconnectedCallback() {
+    if (this._visibilityObserver) {
+      this._visibilityObserver.disconnect();
+      this._visibilityObserver = null;
+    }
+  }
+
   setConfig(config) {
     this._config = Object.assign({
       main_title: 'My Feeder',
@@ -232,8 +250,16 @@ class PetfeederCard extends HTMLElement {
   }
 
   set hass(hass) {
+    const oldHass = this._hass;
     this._hass = hass;
-    if (!this._popupOpen) this.render();
+    if (this._popupOpen) return;
+
+    // Throttle renders to avoid excessive DOM rebuilds (e.g., inside bubble card popups)
+    if (this._renderTimer) return;
+    this._renderTimer = setTimeout(() => {
+      this._renderTimer = null;
+      this.render();
+    }, 100);
   }
 
   // --- Schedule data helpers ---
@@ -630,8 +656,9 @@ class PetfeederCard extends HTMLElement {
 
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     svg.setAttribute('viewBox', `0 0 ${size} ${size}`);
-    svg.setAttribute('width', '100%');
-    svg.setAttribute('height', '100%');
+    svg.style.width = '100%';
+    svg.style.height = '100%';
+    svg.style.display = 'block';
 
     // Background track
     const bgCircle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
@@ -1250,17 +1277,6 @@ class PetfeederCard extends HTMLElement {
     if (!this._shadow) return;
 
     this._hasRendered = true;
-    
-    // Setup visibility observer for SVG rendering on popup load
-    if (!this._visibilityObserver && typeof IntersectionObserver !== 'undefined') {
-      this._visibilityObserver = new IntersectionObserver((entries) => {
-        if (entries[0].isIntersecting && this._hasRendered) {
-          // Re-render to ensure SVG is displayed
-          this._forceRender = true;
-        }
-      });
-      this._visibilityObserver.observe(this);
-    }
 
     // Use compact rendering if enabled
     if (this._config.compact) {
@@ -1278,21 +1294,21 @@ class PetfeederCard extends HTMLElement {
 
     const style = `
       :host{display:block;box-sizing:border-box;padding:0;max-width:800px;margin:0 auto;font-family:Roboto, sans-serif}
-      .card{border-radius:12px;overflow:hidden;background:var(--ha-card-background, #fff);box-shadow:var(--ha-card-box-shadow, 0 2px 6px rgba(0,0,0,0.1));display:flex;flex-direction:column}
-      .card-header{background:${headerBg};padding:20px 16px 0;text-align:center;position:relative}
+      .card{border-radius:12px;overflow:visible;background:var(--ha-card-background, #fff);box-shadow:var(--ha-card-box-shadow, 0 2px 6px rgba(0,0,0,0.1));display:flex;flex-direction:column}
+      .card-header{background:${headerBg};padding:20px 16px 0;text-align:center;position:relative;overflow:visible}
       .pet-name{font-size:16px;font-weight:500;color:var(--primary-text-color,#333);display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:4px}
       .pet-name img{width:28px;height:28px;border-radius:50%;object-fit:cover}
       .sub-label{font-size:12px;color:var(--secondary-text-color,#888);margin-bottom:16px}
       .header-main{display:flex;align-items:center;justify-content:center;gap:0;padding:0 8px}
       .header-left{flex:0 0 100px;display:flex;flex-direction:column;gap:8px;align-items:center;padding:8px 4px}
       .header-center{flex:1;display:flex;flex-direction:column;align-items:center;padding:0 12px}
-      .header-right{flex:0 0 160px;display:flex;flex-direction:column;gap:4px;align-items:stretch;padding:8px 12px;margin:0 8px}
+      .header-right{flex:0 1 auto;display:flex;flex-direction:column;gap:4px;align-items:stretch;padding:8px 12px;margin:0 8px;min-width:100px;max-width:160px;overflow:visible}
       .left-status-panel{display:flex;flex-direction:column;gap:8px;width:100%}
       .left-status-item{display:flex;flex-direction:column;align-items:center;gap:2px;padding:6px 8px;background:transparent;border-radius:6px;border:none}
       .left-status-icon{font-size:28px;color:#888;display:flex;align-items:center;justify-content:center}
       .left-status-name{font-size:11px;color:var(--secondary-text-color,#888);text-align:center;word-break:break-word;max-width:80px;font-weight:500}
       .left-status-state{font-size:10px;color:var(--secondary-text-color,#888);text-align:center}
-      .dial-container{position:relative;width:200px;height:200px;margin:0 auto}
+      .dial-container{position:relative;width:200px;height:200px;margin:0 auto;aspect-ratio:1/1}
       .dial-center{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center}
       .dial-grams{font-size:48px;font-weight:300;color:var(--primary-text-color,#333);line-height:1}
       .dial-label{font-size:12px;color:var(--secondary-text-color,#888);margin-top:4px}
@@ -1365,7 +1381,7 @@ class PetfeederCard extends HTMLElement {
         .header-main{gap:0;padding:0 4px}
         .header-left{flex:0 0 100px;padding:4px 2px;gap:4px}
         .header-center{padding:0;flex:1}
-        .header-right{flex:0 0 120px;padding:3px 2px;gap:2px}
+        .header-right{flex:0 1 auto;min-width:90px;max-width:120px;padding:3px 2px;gap:2px;overflow:visible}
         .dial-container{width:140px;height:140px;margin:0 8px}
         .dial-grams{font-size:36px}
         .dial-label{font-size:10px;margin-top:2px}
@@ -1383,7 +1399,7 @@ class PetfeederCard extends HTMLElement {
         .header-main{gap:0;padding:0 2px}
         .header-left{flex:0 0 80px;padding:3px 1px;gap:3px}
         .header-center{padding:0;flex:1}
-        .header-right{flex:0 0 100px;padding:2px 2px;gap:2px}
+        .header-right{flex:0 1 auto;min-width:80px;max-width:100px;padding:2px 2px;gap:2px;overflow:visible}
         .dial-container{width:120px;height:120px;margin:0 6px}
         .dial-grams{font-size:32px}
         .dial-label{font-size:9px;margin-top:1px}
