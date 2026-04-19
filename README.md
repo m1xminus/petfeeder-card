@@ -2,10 +2,28 @@
 
 A custom Home Assistant Lovelace card for controlling and monitoring pet feeders via ESPHome or other Home Assistant entities. Includes visual editor support and responsive design.
 
-<img width="592" height="479" alt="Normal" src="https://github.com/user-attachments/assets/3bc1628a-09b2-4cfc-9059-156f3e2240d3" />
-<img width="466" height="200" alt="Compact" src="https://github.com/user-attachments/assets/d497deb4-fc13-4846-85d5-984d5b2d9689" />
-<img width="590" height="654" alt="Schedule editor" src="https://github.com/user-attachments/assets/39c3716f-563d-47ee-9150-46655eaa3168" />
-<img width="1169" height="723" alt="Visual editor" src="https://github.com/user-attachments/assets/e9baf8e1-6cb2-4527-ba32-07371d7ec1c8" />
+<table border="0">
+  <tr>
+    <td width="350px">
+      <img src="https://github.com/user-attachments/assets/3bc1628a-09b2-4cfc-9059-156f3e2240d3" alt="Normal View" width="350px"><br>
+      <b>Normal View</b>
+    </td>
+    <td width="350px">
+      <img src="https://github.com/user-attachments/assets/d497deb4-fc13-4846-85d5-984d5b2d9689" alt="Compact View" width="350px"><br>
+      <b>Compact View</b>
+    </td>
+  </tr>
+  <tr>
+    <td width="350px">
+      <img src="https://github.com/user-attachments/assets/39c3716f-563d-47ee-9150-46655eaa3168" alt="Schedule Editor" width="350px"><br>
+      <b>Schedule Editor</b>
+    </td>
+    <td width="350px">
+      <img src="https://github.com/user-attachments/assets/e9baf8e1-6cb2-4527-ba32-07371d7ec1c8" alt="Visual Editor" width="350px"><br>
+      <b>Visual Editor</b>
+    </td>
+  </tr>
+</table>
 
 ##  **This card was created for my pet feeder project. I tried to make it versatile so it adapts to other devices. If you are having any trouble please fill the issues with your make and model and what type of enteties it expose on your home assistant and what type of issues are you facing, i will do my best to fix it.** 
 
@@ -41,33 +59,7 @@ A custom Home Assistant Lovelace card for controlling and monitoring pet feeders
 
 ## Configuration
 
-Add a card in your Lovelace dashboard:
-
-```yaml
-type: 'custom:petfeeder-card'
-title: 'My Pet Feeder'
-image: '/local/pet.jpg'
-compact: false
-status:
-  - entity: sensor.wifi_status
-    icon: 'mdi:wifi'
-    color_map: '{"connected":"#4caf50","disconnected":"#f44336"}'
-  - entity: sensor.power
-    icon: 'mdi:power-plug'
-  - null
-  - null
-menu:
-  - name: Info
-    content: 'Your feeder info here'
-  - name: Logs
-    content: 'Feeding logs'
-  - name: Feed Now
-    content: 'Click to feed manually'
-last_feed_entity: sensor.last_feeding_time
-schedules:
-  - sensor.next_feed_time_1
-  - sensor.next_feed_time_2
-```
+Add a card in your Lovelace dashboard, edit via visual editor!
 
 ### Options
 
