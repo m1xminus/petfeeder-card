@@ -31,6 +31,8 @@ A custom Home Assistant Lovelace card for controlling and monitoring pet feeders
 ## Features
 
 - **Status indicators**: 4 configurable status slots with conditional icons and colors based on entity state
+- **Schedule Pie**: This center dial (on normal view) and the bars (compact view) represent the active schedules and change colors when they are delivered. If there was an error delivering the food, the pie that has fault lits red.
+  This works with NTP from home assistant and a fail delivery sensor that my project has. if your project or device does not expose a fail food delivery it might not show it as fault
 - **Pet picture**: Display a pet image in the center of the card
 - **Menu dropdown**: Create custom menu items with dynamic content
 - **Schedule tracking**: Display next feeding time from multiple schedule entities
