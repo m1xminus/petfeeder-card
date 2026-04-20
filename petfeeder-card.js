@@ -274,12 +274,12 @@ class PetfeederCard extends HTMLElement {
     }
 
     // DOM already built - only update dynamic values in-place
-    // Throttle to avoid excessive updates on Android Companion
+    // Throttle to avoid excessive updates, but be responsive
     if (this._renderTimer) return;
     this._renderTimer = setTimeout(() => {
       this._renderTimer = null;
       this._updateDynamic();
-    }, 500);
+    }, 200);
   }
 
   // Update only the dynamic parts of the card without rebuilding the DOM
@@ -345,6 +345,35 @@ class PetfeederCard extends HTMLElement {
 
   // Update dynamic parts of compact card
   _updateDynamicCompact() {
+    // Update progress bar segments based on current time
+    const progressSegments = this._shadow.querySelectorAll('.progress-segment');
+    if (progressSegments.length > 0) {
+      const schedules = this._getScheduleData().filter(s => s.enabled);
+      
+      // Get current time from Home Assistant
+      const now = new Date();
+      if (this._hass && this._hass.states['sensor.time']) {
+        const timeStr = this._hass.states['sensor.time']?.state;
+        if (timeStr && typeof timeStr === 'string') {
+          const [h, m] = timeStr.split(':').map(Number);
+          now.setHours(h, m, 0, 0);
+        }
+      }
+      
+      progressSegments.forEach((segment, idx) => {
+        if (idx >= schedules.length) return;
+        const sched = schedules[idx];
+        const scheduleTime = new Date(now);
+        scheduleTime.setHours(sched.hour, sched.minute, 0, 0);
+        
+        if (now >= scheduleTime) {
+          segment.classList.add('filled');
+        } else {
+          segment.classList.remove('filled');
+        }
+      });
+    }
+
     // Update stats
     const statValues = this._shadow.querySelectorAll('.compact-stat-value');
     if (statValues.length >= 3) {
@@ -476,7 +505,7 @@ class PetfeederCard extends HTMLElement {
       .compact-title{font-size:14px;font-weight:500;color:var(--primary-text-color,#333);display:flex;align-items:center;gap:6px}
       .compact-subtitle{font-size:12px;color:var(--secondary-text-color,#888);margin-top:2px}
       .compact-status{display:flex;gap:8px;margin-top:4px;flex-wrap:wrap;align-items:center}
-      .compact-status-item{font-size:10px;color:var(--secondary-text-color,#888);display:flex;align-items:center;gap:4px;background:var(--ha-card-background, #fff);padding:2px 6px;border-radius:4px}
+      .compact-status-item{font-size:10px;color:var(--secondary-text-color,#888);display:flex;align-items:center;gap:4px;background:var(--ha-card-background, #fff);padding:3px 6px;border-radius:4px;line-height:1.2}
       .compact-status-icon{width:6px;height:6px;border-radius:50%}
       .compact-progress{padding:0 16px 12px;display:flex;gap:6px;align-items:center;height:32px}
       .compact-progress-bar{flex:1;display:flex;gap:4px;height:12px}
@@ -562,11 +591,15 @@ class PetfeederCard extends HTMLElement {
         iconSpan.style.color = color;
         iconSpan.style.display = 'inline-flex';
         iconSpan.style.alignItems = 'center';
+        iconSpan.style.justifyContent = 'center';
+        iconSpan.style.flexShrink = '0';
+        iconSpan.style.width = '14px';
+        iconSpan.style.height = '14px';
         const haIcon = document.createElement('ha-icon');
         haIcon.setAttribute('icon', item.icon);
-        haIcon.style.width = '16px';
-        haIcon.style.height = '16px';
-        haIcon.style.fontSize = '16px';
+        haIcon.style.width = '14px';
+        haIcon.style.height = '14px';
+        haIcon.style.fontSize = '14px';
         iconSpan.appendChild(haIcon);
         statusItem.appendChild(iconSpan);
       }
