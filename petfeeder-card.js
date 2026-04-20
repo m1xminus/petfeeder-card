@@ -498,7 +498,7 @@ class PetfeederCard extends HTMLElement {
 
     const style = `
       :host{display:block;box-sizing:border-box;padding:0;font-family:Roboto, sans-serif;transform:translateZ(0);will-change:contents}
-      ha-icon{display:inherit}
+      ha-icon{display:block !important;vertical-align:middle}
       .compact-card{display:flex;flex-direction:column;border-radius:12px;overflow:hidden;background:var(--ha-card-background, #fff);box-shadow:var(--ha-card-box-shadow, 0 2px 6px rgba(0,0,0,0.1));cursor:pointer}
       .compact-header{background:${headerBg};padding:12px 16px;display:flex;gap:12px;align-items:flex-start}
       .compact-image{width:40px;height:40px;border-radius:50%;object-fit:cover;flex-shrink:0}
