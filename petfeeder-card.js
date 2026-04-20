@@ -585,6 +585,12 @@ class PetfeederCard extends HTMLElement {
         }
       }
 
+      // Create icon + name group
+      const iconNameGroup = document.createElement('span');
+      iconNameGroup.style.display = 'flex';
+      iconNameGroup.style.alignItems = 'center';
+      iconNameGroup.style.gap = '4px';
+
       // Icon
       if (item.show_icon !== false && item.icon) {
         const iconSpan = document.createElement('span');
@@ -601,15 +607,17 @@ class PetfeederCard extends HTMLElement {
         haIcon.style.height = '14px';
         haIcon.style.fontSize = '14px';
         iconSpan.appendChild(haIcon);
-        statusItem.appendChild(iconSpan);
+        iconNameGroup.appendChild(iconSpan);
       }
 
       // Name
       if (item.show_name !== false && item.name) {
         const nameSpan = document.createElement('span');
         nameSpan.textContent = item.name;
-        statusItem.appendChild(nameSpan);
+        iconNameGroup.appendChild(nameSpan);
       }
+
+      statusItem.appendChild(iconNameGroup);
 
       // State
       if (item.show_state !== false && item.entity && this._hass) {
