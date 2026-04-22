@@ -16,6 +16,14 @@ class PetfeederCard extends HTMLElement {
       this.render();
     }
 
+    // Auto-refresh history logs every 5 minutes for always-on displays
+    if (!this._historyPollInterval) {
+      this._historyPollInterval = setInterval(() => {
+        this._historyLogsFetched = 0; // invalidate cache
+        if (this.isConnected && this._hass) this.render();
+      }, 5 * 60 * 1000);
+    }
+
     // Bubble Card popup workaround: the popup uses contain:layout paint
     // during its 300ms open animation. Android WebView doesn't repaint
     // canvas/layout after contain is removed. Force a full re-render
@@ -37,6 +45,10 @@ class PetfeederCard extends HTMLElement {
     if (this._connectTimer) {
       clearTimeout(this._connectTimer);
       this._connectTimer = null;
+    }
+    if (this._historyPollInterval) {
+      clearInterval(this._historyPollInterval);
+      this._historyPollInterval = null;
     }
     this._domBuilt = false;
   }
@@ -1556,7 +1568,7 @@ class PetfeederCard extends HTMLElement {
       } else if (cached && cached.length === 0) {
         const empty = document.createElement('div');
         empty.style.cssText = 'text-align:center;color:#999;font-size:11px;padding:8px;white-space:pre-wrap;word-break:break-all';
-        empty.textContent = this._historyDebug || this._t('no_feedings_logged');
+        empty.textContent = this._t('no_feedings_logged');
         rightContent.appendChild(empty);
       } else {
         const loading = document.createElement('div');
@@ -1581,7 +1593,6 @@ class PetfeederCard extends HTMLElement {
         }).then(result => {
           // result is { 'entity.id': [{state, last_changed, last_updated}, ...], ... }
           const entries = [];
-          const allStates = [];
           Object.entries(result || {}).forEach(([entityId, stateList]) => {
             if (!Array.isArray(stateList)) return;
             stateList.forEach(item => {
@@ -1589,7 +1600,6 @@ class PetfeederCard extends HTMLElement {
               const state = item.s ?? item.state;
               if (!state || state === 'unknown' || state === 'unavailable') return;
               if (!/delivered/i.test(state) || /not.delivered/i.test(state)) return;
-              allStates.push(state);
               const match = entityId.match(/schedule_(\d+)/);
               const schedNum = match ? match[1] : '?';
               const schedName = `Schedule ${schedNum}`;
@@ -1603,8 +1613,6 @@ class PetfeederCard extends HTMLElement {
               entries.push({ timestamp, schedule: schedName, info, status: state, _ts: ts.getTime() });
             });
           });
-          const uniqueStates = [...new Set(allStates)].slice(0, 5);
-          this._historyDebug = `requested: ${validEntities.join(', ')} | result keys: ${Object.keys(result||{}).join(', ')||'none'} | ${allStates.length} states | sample: ${uniqueStates.join(', ')}`;
           entries.sort((a, b) => b._ts - a._ts);
           this._historyLogs = entries;
           this._historyLogsFetchError = null;
