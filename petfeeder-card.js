@@ -1429,6 +1429,38 @@ class PetfeederCard extends HTMLElement {
     }
   }
 
+  // --- Log entry renderer (shared by history and CSV modes) ---
+
+  _renderLogEntries(container, entries) {
+    entries.forEach((entry, idx) => {
+      const logItem = document.createElement('div');
+      logItem.style.cssText = `padding:5px 6px;${idx < entries.length - 1 ? 'border-bottom:1px solid var(--divider-color,#e0e0e0);' : ''}font-size:11px;color:var(--primary-text-color,#333)`;
+      const dt = document.createElement('div');
+      dt.style.cssText = 'font-size:10px;color:var(--secondary-text-color,#888);margin-bottom:2px';
+      dt.textContent = entry.timestamp;
+      const infoRow = document.createElement('div');
+      infoRow.style.cssText = 'display:flex;justify-content:space-between;align-items:center;gap:4px';
+      const sched = document.createElement('span');
+      sched.style.cssText = 'font-weight:500;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
+      sched.textContent = entry.schedule;
+      const detail = document.createElement('span');
+      detail.style.cssText = 'color:var(--secondary-text-color,#888);font-size:10px;flex:1;text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
+      detail.textContent = entry.info;
+      const statusEl = document.createElement('span');
+      statusEl.style.cssText = 'font-size:10px;font-weight:500;color:#4caf50;flex-shrink:0';
+      if (entry.status.toLowerCase().includes('error') || entry.status.toLowerCase().includes('fail')) {
+        statusEl.style.color = '#f44336';
+      }
+      statusEl.textContent = entry.status;
+      infoRow.appendChild(sched);
+      infoRow.appendChild(detail);
+      infoRow.appendChild(statusEl);
+      logItem.appendChild(dt);
+      logItem.appendChild(infoRow);
+      container.appendChild(logItem);
+    });
+  }
+
   // --- Stats Tab ---
 
   _renderStatsTab() {
@@ -1438,6 +1470,10 @@ class PetfeederCard extends HTMLElement {
     const statsConfig = this._config.tabs_config?.stats || {};
     const stats = Array.isArray(statsConfig) ? statsConfig : statsConfig.items || [];
     const logsEntity = typeof statsConfig === 'object' ? statsConfig.logs_entity : null;
+    const historyEntities = typeof statsConfig === 'object' && Array.isArray(statsConfig.logs_history_entities)
+      ? statsConfig.logs_history_entities : null;
+    const historyDays = typeof statsConfig === 'object' && statsConfig.logs_history_days
+      ? Number(statsConfig.logs_history_days) : 7;
     const leftHeader = typeof statsConfig === 'object' ? statsConfig.left_header || 'Stats' : 'Stats';
     const rightHeader = typeof statsConfig === 'object' ? statsConfig.right_header || 'Feed History' : 'Feed History';
 
@@ -1502,7 +1538,76 @@ class PetfeederCard extends HTMLElement {
     const rightContent = document.createElement('div');
     rightContent.style.cssText = 'flex:1;overflow-y:auto;max-height:200px;border:1px solid var(--divider-color,#e0e0e0);border-radius:6px;padding:8px';
 
-    if (logsEntity && this._hass) {
+    if (historyEntities && this._hass) {
+      // --- History API mode ---
+      const cached = this._historyLogs;
+      const lastFetch = this._historyLogsFetched || 0;
+      const now = Date.now();
+
+      // Render from cache immediately if available
+      if (cached && cached.length > 0) {
+        this._renderLogEntries(rightContent, cached);
+      } else {
+        const loading = document.createElement('div');
+        loading.style.cssText = 'text-align:center;color:#999;font-size:12px;padding:8px';
+        loading.textContent = '...';
+        rightContent.appendChild(loading);
+      }
+
+      // Fetch fresh data if cache is stale (>60s) or empty
+      if (now - lastFetch > 60000) {
+        this._historyLogsFetched = now;
+        const start = new Date(now - historyDays * 86400000).toISOString();
+        const entityParam = historyEntities.join(',');
+        this._hass.callApi('GET',
+          `history/period/${start}?filter_entity_id=${entityParam}&minimal_response=false&no_attributes=true&significant_changes_only=false`
+        ).then(history => {
+          if (!Array.isArray(history)) return;
+          const entries = [];
+          history.forEach(entityHistory => {
+            if (!Array.isArray(entityHistory)) return;
+            entityHistory.forEach(item => {
+              const state = item.state;
+              if (!state || (state !== 'Delivered' && !state.toLowerCase().includes('error') && !state.toLowerCase().includes('deliver'))) return;
+              // Derive schedule name from entity_id: "..._schedule_1_delivery_status" → "Schedule 1"
+              const match = (item.entity_id || '').match(/schedule_(\d+)/);
+              const schedNum = match ? match[1] : '?';
+              const schedName = `Schedule ${schedNum}`;
+              // Look up current info for that schedule
+              const infoEntityId = (item.entity_id || '').replace('_delivery_status', '_info');
+              const infoState = this._hass.states[infoEntityId];
+              const info = infoState ? infoState.state : '';
+              // Format timestamp from ISO to local
+              const ts = new Date(item.last_changed);
+              const timestamp = `${ts.getFullYear()}-${String(ts.getMonth()+1).padStart(2,'0')}-${String(ts.getDate()).padStart(2,'0')} ${String(ts.getHours()).padStart(2,'0')}:${String(ts.getMinutes()).padStart(2,'0')}:${String(ts.getSeconds()).padStart(2,'0')}`;
+              entries.push({ timestamp, schedule: schedName, info, status: state, _ts: ts.getTime() });
+            });
+          });
+          // Sort newest first
+          entries.sort((a, b) => b._ts - a._ts);
+          this._historyLogs = entries;
+          // Re-render right panel only
+          rightContent.innerHTML = '';
+          if (entries.length === 0) {
+            const empty = document.createElement('div');
+            empty.style.cssText = 'text-align:center;color:#999;font-size:12px;padding:8px';
+            empty.textContent = this._t('no_feedings_logged');
+            rightContent.appendChild(empty);
+          } else {
+            this._renderLogEntries(rightContent, entries);
+          }
+        }).catch(() => {
+          if (!this._historyLogs || this._historyLogs.length === 0) {
+            rightContent.innerHTML = '';
+            const err = document.createElement('div');
+            err.style.cssText = 'text-align:center;color:#f44336;font-size:11px;padding:8px';
+            err.textContent = 'History unavailable';
+            rightContent.appendChild(err);
+          }
+        });
+      }
+    } else if (logsEntity && this._hass) {
+      // --- Legacy CSV sensor mode ---
       const logState = this._hass.states[logsEntity];
 
       if (!logState) {
@@ -1511,17 +1616,20 @@ class PetfeederCard extends HTMLElement {
         empty.textContent = `Entity not found: ${logsEntity}`;
         rightContent.appendChild(empty);
       } else {
-        // Prefer attributes.lines array (JSON sensor), fall back to parsing state string
         let rawLines = null;
-        if (Array.isArray(logState.attributes && logState.attributes.lines)) {
-          // JSON sensor: lines are already split, newest last — reverse for newest first
-          rawLines = [...logState.attributes.lines].reverse();
-        } else {
+        const attrLines = logState.attributes ? logState.attributes.lines : undefined;
+        if (Array.isArray(attrLines) && attrLines.length > 0) {
+          rawLines = [...attrLines].reverse();
+        } else if (typeof attrLines === 'string') {
+          try {
+            const parsed = JSON.parse(attrLines);
+            if (Array.isArray(parsed) && parsed.length > 0) rawLines = [...parsed].reverse();
+          } catch(e) {}
+        }
+        if (!rawLines) {
           const stateStr = logState.state;
           const noData = !stateStr || stateStr === '' || stateStr === 'unknown' || stateStr === 'unavailable' || stateStr.trim() === 'No feedings logged yet';
-          if (!noData) {
-            rawLines = stateStr.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0).reverse();
-          }
+          if (!noData) rawLines = stateStr.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0).reverse();
         }
 
         if (!rawLines || rawLines.length === 0) {
@@ -1530,55 +1638,21 @@ class PetfeederCard extends HTMLElement {
           empty.textContent = this._t('no_feedings_logged');
           rightContent.appendChild(empty);
         } else {
-          // Smart CSV parse: col0=timestamp, col1=schedule, col_last=status, middle=info
           const parseLine = line => {
             const cols = line.split(',');
             if (cols.length < 4) return null;
             const timestamp = cols[0].trim();
             if (!/^\d{4}-\d{2}-\d{2}/.test(timestamp)) return null;
-            return {
-              timestamp,
-              schedule: cols[1].trim(),
-              status:   cols[cols.length - 1].trim(),
-              info:     cols.slice(2, -1).join(',').trim()
-            };
+            return { timestamp, schedule: cols[1].trim(), status: cols[cols.length - 1].trim(), info: cols.slice(2, -1).join(',').trim() };
           };
-
           const validEntries = rawLines.map(parseLine).filter(Boolean);
-
           if (validEntries.length === 0) {
-            const dbg = document.createElement('div');
-            dbg.style.cssText = 'font-size:10px;color:#888;padding:4px;word-break:break-all;font-family:monospace;white-space:pre-wrap';
-            dbg.textContent = rawLines.slice(0, 5).join('\n').substring(0, 300);
-            rightContent.appendChild(dbg);
+            const empty = document.createElement('div');
+            empty.style.cssText = 'text-align:center;color:#999;font-size:12px;padding:8px';
+            empty.textContent = this._t('no_logs');
+            rightContent.appendChild(empty);
           } else {
-            validEntries.forEach((entry, idx) => {
-              const logItem = document.createElement('div');
-              logItem.style.cssText = `padding:5px 6px;${idx < validEntries.length - 1 ? 'border-bottom:1px solid var(--divider-color,#e0e0e0);' : ''}font-size:11px;color:var(--primary-text-color,#333)`;
-              const dt = document.createElement('div');
-              dt.style.cssText = 'font-size:10px;color:var(--secondary-text-color,#888);margin-bottom:2px';
-              dt.textContent = entry.timestamp;
-              const infoRow = document.createElement('div');
-              infoRow.style.cssText = 'display:flex;justify-content:space-between;align-items:center;gap:4px';
-              const sched = document.createElement('span');
-              sched.style.cssText = 'font-weight:500;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
-              sched.textContent = entry.schedule;
-              const detail = document.createElement('span');
-              detail.style.cssText = 'color:var(--secondary-text-color,#888);font-size:10px;flex:1;text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
-              detail.textContent = entry.info;
-              const statusEl = document.createElement('span');
-              statusEl.style.cssText = 'font-size:10px;font-weight:500;color:#4caf50;flex-shrink:0';
-              if (entry.status.toLowerCase().includes('error') || entry.status.toLowerCase().includes('fail')) {
-                statusEl.style.color = '#f44336';
-              }
-              statusEl.textContent = entry.status;
-              infoRow.appendChild(sched);
-              infoRow.appendChild(detail);
-              infoRow.appendChild(statusEl);
-              logItem.appendChild(dt);
-              logItem.appendChild(infoRow);
-              rightContent.appendChild(logItem);
-            });
+            this._renderLogEntries(rightContent, validEntries);
           }
         }
       }
