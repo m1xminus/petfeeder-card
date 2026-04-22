@@ -3150,6 +3150,8 @@ class PetfeederCardEditor extends HTMLElement {
         // Migrate old format to new format
         statsConfig = {
           logs_entity: null,
+          logs_history_entities: [],
+          logs_history_days: 7,
           left_header: 'Stats',
           right_header: 'Feed History',
           items: statsConfig
@@ -3157,9 +3159,72 @@ class PetfeederCardEditor extends HTMLElement {
         this._config.tabs_config.stats = statsConfig;
         this._dispatch();
       }
+      if (!Array.isArray(statsConfig.logs_history_entities)) {
+        statsConfig.logs_history_entities = [];
+      }
 
-      // Logs entity
-      content.appendChild(this._buildHaEntityPicker('Logs Entity (for feed history)', statsConfig.logs_entity || '', v => {
+      // --- History Entities section ---
+      const histLabel = document.createElement('div');
+      histLabel.style.cssText = 'font-size:13px;font-weight:600;margin:12px 0 6px';
+      histLabel.textContent = 'Feed History — Delivery Status Entities';
+      content.appendChild(histLabel);
+
+      const histDesc = document.createElement('div');
+      histDesc.style.cssText = 'font-size:11px;color:var(--secondary-text-color,#888);margin-bottom:8px';
+      histDesc.textContent = 'Add the delivery status sensor for each schedule. History is read from HA recorder — no extra sensors needed.';
+      content.appendChild(histDesc);
+
+      const histEntities = statsConfig.logs_history_entities;
+      histEntities.forEach((entityId, idx) => {
+        const row = document.createElement('div');
+        row.style.cssText = 'display:flex;align-items:center;gap:6px;margin-bottom:4px';
+        const picker = this._buildHaEntityPicker(`Schedule ${idx + 1} Status Entity`, entityId || '', v => {
+          if (!Array.isArray(this._config.tabs_config.stats.logs_history_entities)) this._config.tabs_config.stats.logs_history_entities = [];
+          this._config.tabs_config.stats.logs_history_entities[idx] = v || '';
+          this._dispatch();
+        });
+        picker.style.flex = '1';
+        const removeBtn = document.createElement('button');
+        removeBtn.className = 'pf-btn pf-btn-danger pf-btn-sm';
+        removeBtn.textContent = '✕';
+        removeBtn.style.cssText = 'flex-shrink:0;margin-top:18px';
+        removeBtn.addEventListener('click', () => {
+          this._config.tabs_config.stats.logs_history_entities.splice(idx, 1);
+          this._dispatch();
+          this._render();
+        });
+        row.appendChild(picker);
+        row.appendChild(removeBtn);
+        content.appendChild(row);
+      });
+
+      const addHistBtn = document.createElement('button');
+      addHistBtn.className = 'pf-btn pf-btn-primary pf-btn-sm';
+      addHistBtn.textContent = '+ Add Schedule Entity';
+      addHistBtn.style.marginBottom = '12px';
+      addHistBtn.addEventListener('click', () => {
+        if (!Array.isArray(this._config.tabs_config.stats.logs_history_entities)) this._config.tabs_config.stats.logs_history_entities = [];
+        this._config.tabs_config.stats.logs_history_entities.push('');
+        this._dispatch();
+        this._render();
+      });
+      content.appendChild(addHistBtn);
+
+      // History days
+      content.appendChild(this._buildTextField('History Days', String(statsConfig.logs_history_days ?? 7), 'Days of history to show (default 7)', v => {
+        if (!this._config.tabs_config.stats) this._config.tabs_config.stats = {};
+        const n = parseInt(v);
+        this._config.tabs_config.stats.logs_history_days = isNaN(n) ? 7 : n;
+        this._dispatch();
+      }));
+
+      // Legacy CSV logs entity (fallback)
+      const legacyLabel = document.createElement('div');
+      legacyLabel.style.cssText = 'font-size:12px;font-weight:600;margin:12px 0 4px;color:var(--secondary-text-color,#888)';
+      legacyLabel.textContent = 'Legacy: CSV Logs Entity (fallback if no history entities set)';
+      content.appendChild(legacyLabel);
+
+      content.appendChild(this._buildHaEntityPicker('CSV Logs Entity', statsConfig.logs_entity || '', v => {
         if (!this._config.tabs_config.stats) this._config.tabs_config.stats = {};
         this._config.tabs_config.stats.logs_entity = v || null;
         this._dispatch();
