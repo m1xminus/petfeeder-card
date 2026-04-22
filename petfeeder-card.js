@@ -127,6 +127,17 @@ class PetfeederCard extends HTMLElement {
         quick_feeds: 'Quick Feeds',
         custom_feed: 'Custom Feed',
         send: 'Send',
+        apply: 'Apply',
+        grams: 'Grams',
+        last_feed: 'Last Feed',
+        last_feed_label: 'Last feed',
+        no_logs: 'No logs',
+        no_feedings_logged: 'No feedings logged yet',
+        logs_not_configured: 'Logs not configured',
+        no_entity_configured: 'No entity configured',
+        no_feed_button: 'No feed button configured',
+        applied_confirmation: 'Set to',
+        sent_confirmation: 'Sent!',
         disable_animations: 'Disable Animations',
         // State translations
         state_open: 'Open',
@@ -167,6 +178,17 @@ class PetfeederCard extends HTMLElement {
         quick_feeds: 'Alimentações Rápidas',
         custom_feed: 'Alimentação Personalizada',
         send: 'Enviar',
+        apply: 'Aplicar',
+        grams: 'Gramas',
+        last_feed: 'Última Refeição',
+        last_feed_label: 'Última refeição',
+        no_logs: 'Sem registos',
+        no_feedings_logged: 'Nenhuma alimentação registada ainda',
+        logs_not_configured: 'Registos não configurados',
+        no_entity_configured: 'Nenhuma entidade configurada',
+        no_feed_button: 'Botão de alimentação não configurado',
+        applied_confirmation: 'Definido para',
+        sent_confirmation: 'Enviado!',
         disable_animations: 'Desativar Animações',
         // State translations
         state_open: 'Aberto',
@@ -730,7 +752,7 @@ class PetfeederCard extends HTMLElement {
     gramsVal.textContent = grams + 'g';
     const gramsLabel = document.createElement('div');
     gramsLabel.className = 'compact-stat-label';
-    gramsLabel.textContent = 'Grams';
+    gramsLabel.textContent = this._t('grams');
     gramsEl.appendChild(gramsVal);
     gramsEl.appendChild(gramsLabel);
     statsDiv.appendChild(gramsEl);
@@ -769,7 +791,7 @@ class PetfeederCard extends HTMLElement {
       }
       const lastFeedLabel = document.createElement('div');
       lastFeedLabel.className = 'compact-stat-label';
-      lastFeedLabel.textContent = 'Last Feed';
+      lastFeedLabel.textContent = this._t('last_feed');
       lastFeedEl.appendChild(lastFeedVal);
       lastFeedEl.appendChild(lastFeedLabel);
       statsDiv.appendChild(lastFeedEl);
@@ -1324,7 +1346,7 @@ class PetfeederCard extends HTMLElement {
     const applyBtn = document.createElement('button');
     applyBtn.className = 'custom-feed-btn';
     applyBtn.style.cssText = 'background:var(--secondary-background-color,#f5f5f5);color:var(--primary-text-color,#333);border:1px solid var(--divider-color,#ddd);';
-    applyBtn.textContent = 'Apply';
+    applyBtn.textContent = this._t('apply');
 
     // Status label that shows confirmation
     const applyStatus = document.createElement('div');
@@ -1334,7 +1356,7 @@ class PetfeederCard extends HTMLElement {
       if (!this._hass) return;
       const doses = parseInt(dosenInput.value, 10) || 1;
       if (!customDosesEntity) {
-        applyStatus.textContent = 'No entity configured';
+        applyStatus.textContent = this._t('no_entity_configured');
         return;
       }
       const domain = customDosesEntity.split('.')[0];
@@ -1342,7 +1364,7 @@ class PetfeederCard extends HTMLElement {
         entity_id: customDosesEntity,
         value: doses
       });
-      applyStatus.textContent = `✓ Set to ${doses}`;
+      applyStatus.textContent = `✓ ${this._t('applied_confirmation')} ${doses}`;
       setTimeout(() => { applyStatus.textContent = ''; }, 2000);
     });
 
@@ -1353,11 +1375,11 @@ class PetfeederCard extends HTMLElement {
     customBtn.addEventListener('click', () => {
       const feedButtonEntity = cfg2.feed_button_entity;
       if (!feedButtonEntity) {
-        applyStatus.textContent = 'No feed button configured';
+        applyStatus.textContent = this._t('no_feed_button');
         return;
       }
       this._hass.callService('button', 'press', { entity_id: feedButtonEntity });
-      applyStatus.textContent = '✓ Sent!';
+      applyStatus.textContent = `✓ ${this._t('sent_confirmation')}`;
       setTimeout(() => { applyStatus.textContent = ''; }, 2000);
     });
 
@@ -1503,7 +1525,7 @@ class PetfeederCard extends HTMLElement {
         if (validEntries.length === 0) {
           const empty = document.createElement('div');
           empty.style.cssText = 'text-align:center;color:#999;font-size:12px;padding:8px';
-          empty.textContent = 'No logs';
+          empty.textContent = this._t('no_logs');
           rightContent.appendChild(empty);
         } else {
           validEntries.forEach((cols, idx) => {
@@ -1540,13 +1562,13 @@ class PetfeederCard extends HTMLElement {
       } else {
         const empty = document.createElement('div');
         empty.style.cssText = 'text-align:center;color:#999;font-size:12px;padding:8px';
-        empty.textContent = 'No feedings logged yet';
+        empty.textContent = this._t('no_feedings_logged');
         rightContent.appendChild(empty);
       }
     } else {
       const empty = document.createElement('div');
       empty.style.cssText = 'text-align:center;color:#999;font-size:12px;padding:8px';
-      empty.textContent = 'Logs not configured';
+      empty.textContent = this._t('logs_not_configured');
       rightContent.appendChild(empty);
     }
 
@@ -1840,7 +1862,7 @@ class PetfeederCard extends HTMLElement {
       const lastFeedState = this._hass?.states[this._config.last_feed_entity];
       const lastFeedRow = document.createElement('div');
       lastFeedRow.className = 'last-feed-row';
-      lastFeedRow.textContent = `Last feed: ${lastFeedState ? lastFeedState.state : '-'}`;
+      lastFeedRow.textContent = `${this._t('last_feed_label')}: ${lastFeedState ? lastFeedState.state : '-'}`;
       headerCenter.appendChild(lastFeedRow);
     }
 
