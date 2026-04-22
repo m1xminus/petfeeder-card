@@ -1519,8 +1519,7 @@ class PetfeederCard extends HTMLElement {
             const cols = line.split(',');
             return cols.length >= 4 ? cols : null;
           })
-          .filter(Boolean)
-          .slice(0, 4); // show last 4
+          .filter(Boolean); // all entries, newest first; panel is scrollable
 
         if (validEntries.length === 0) {
           const empty = document.createElement('div');
