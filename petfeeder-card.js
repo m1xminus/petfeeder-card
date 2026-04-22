@@ -1585,23 +1585,25 @@ class PetfeederCard extends HTMLElement {
           Object.entries(result || {}).forEach(([entityId, stateList]) => {
             if (!Array.isArray(stateList)) return;
             stateList.forEach(item => {
-              const state = item.state;
+              // HA compressed format: s=state, lu=last_updated (Unix float), lc=last_changed
+              const state = item.s ?? item.state;
               if (!state || state === 'unknown' || state === 'unavailable') return;
               allStates.push(state);
-              // No state filter — user should only add delivery status entities
               const match = entityId.match(/schedule_(\d+)/);
               const schedNum = match ? match[1] : '?';
               const schedName = `Schedule ${schedNum}`;
               const infoEntityId = entityId.replace(/_delivery_status$/, '_info');
               const infoState = this._hass.states[infoEntityId];
               const info = infoState ? infoState.state : '';
-              const ts = new Date(item.last_changed || item.last_updated);
+              // lu/lc are Unix timestamps (seconds float) in compressed format, or ISO strings in legacy
+              const rawTs = item.lc ?? item.lu ?? item.last_changed ?? item.last_updated;
+              const ts = typeof rawTs === 'number' ? new Date(rawTs * 1000) : new Date(rawTs);
               const timestamp = `${ts.getFullYear()}-${String(ts.getMonth()+1).padStart(2,'0')}-${String(ts.getDate()).padStart(2,'0')} ${String(ts.getHours()).padStart(2,'0')}:${String(ts.getMinutes()).padStart(2,'0')}:${String(ts.getSeconds()).padStart(2,'0')}`;
               entries.push({ timestamp, schedule: schedName, info, status: state, _ts: ts.getTime() });
             });
           });
           const uniqueStates = [...new Set(allStates)].slice(0, 5);
-          this._historyDebug = `${allStates.length} states | sample: ${uniqueStates.join(', ')}`;
+          this._historyDebug = `requested: ${validEntities.join(', ')} | result keys: ${Object.keys(result||{}).join(', ')||'none'} | ${allStates.length} states | sample: ${uniqueStates.join(', ')}`;
           entries.sort((a, b) => b._ts - a._ts);
           this._historyLogs = entries;
           this._historyLogsFetchError = null;
