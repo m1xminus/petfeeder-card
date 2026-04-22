@@ -91,8 +91,16 @@ class PetfeederCard extends HTMLElement {
         settings: []
       }
     }, config || {});
+
+    // Deep-merge compact_config so nested defaults (e.g. last_feed_entity) survive
+    this._config.compact_config = Object.assign({
+      show_status: true,
+      tap_action: { action: 'more-info' },
+      last_feed_entity: null
+    }, (config || {}).compact_config || {});
+
     this._activeTab = null;
-    
+
     // Config changed - force full DOM rebuild on next render
     this._domBuilt = false;
     if (this._hass) {
@@ -524,7 +532,7 @@ class PetfeederCard extends HTMLElement {
       .compact-progress-bar{flex:1;display:flex;gap:4px;height:12px}
       .progress-segment{flex:1;height:100%;border-radius:4px;background:var(--divider-color,#e0e0e0);opacity:0.3}
       .progress-segment.filled{background:${accentColor};opacity:1}
-      .compact-stats{padding:0 16px 12px;display:flex;gap:16px;justify-content:center}
+      .compact-stats{padding:0 16px 12px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap}
       .compact-stat{text-align:center}
       .compact-stat-value{font-size:14px;font-weight:500;color:var(--primary-text-color,#333)}
       .compact-stat-label{font-size:10px;color:var(--secondary-text-color,#888);margin-top:2px}
@@ -1285,6 +1293,15 @@ class PetfeederCard extends HTMLElement {
     customTitle.textContent = this._t('custom_feed');
     customSection.appendChild(customTitle);
 
+    const cfg2 = this._config.tabs_config?.manual_feed || {};
+    const customDosesEntity = cfg2.custom_doses_entity;
+
+    // Show current entity value if available
+    let currentEntityValue = 1;
+    if (customDosesEntity && this._hass?.states[customDosesEntity]) {
+      currentEntityValue = parseInt(this._hass.states[customDosesEntity].state, 10) || 1;
+    }
+
     const customRow = document.createElement('div');
     customRow.className = 'custom-feed-row';
 
@@ -1292,42 +1309,62 @@ class PetfeederCard extends HTMLElement {
     dosenInput.type = 'number';
     dosenInput.className = 'custom-doses-input';
     dosenInput.min = '1';
-    dosenInput.max = '10';
-    dosenInput.value = '1';
+    dosenInput.max = '20';
+    dosenInput.value = String(currentEntityValue);
     dosenInput.placeholder = 'Doses';
     dosenInput.step = '1';
-    dosenInput.style.fontSize = '14px';
-    dosenInput.style.padding = '10px';
-    
-    // Handle input changes to ensure value is updated
+
     dosenInput.addEventListener('change', e => {
       const val = parseInt(e.target.value, 10);
-      if (isNaN(val) || val < 1) {
-        e.target.value = '1';
-      } else if (val > 10) {
-        e.target.value = '10';
-      }
-    });
-    
-    dosenInput.addEventListener('keypress', e => {
-      if (e.key === 'Enter') {
-        customBtn.click();
-      }
+      if (isNaN(val) || val < 1) e.target.value = '1';
     });
 
+    // Apply button — writes the number to the entity
+    const applyBtn = document.createElement('button');
+    applyBtn.className = 'custom-feed-btn';
+    applyBtn.style.cssText = 'background:var(--secondary-background-color,#f5f5f5);color:var(--primary-text-color,#333);border:1px solid var(--divider-color,#ddd);';
+    applyBtn.textContent = 'Apply';
+
+    // Status label that shows confirmation
+    const applyStatus = document.createElement('div');
+    applyStatus.style.cssText = 'font-size:10px;color:var(--secondary-text-color,#888);margin-top:4px;min-height:14px;text-align:center';
+
+    applyBtn.addEventListener('click', () => {
+      if (!this._hass) return;
+      const doses = parseInt(dosenInput.value, 10) || 1;
+      if (!customDosesEntity) {
+        applyStatus.textContent = 'No entity configured';
+        return;
+      }
+      const domain = customDosesEntity.split('.')[0];
+      this._hass.callService(domain, 'set_value', {
+        entity_id: customDosesEntity,
+        value: doses
+      });
+      applyStatus.textContent = `✓ Set to ${doses}`;
+      setTimeout(() => { applyStatus.textContent = ''; }, 2000);
+    });
+
+    // Send button — presses the feed button entity
     const customBtn = document.createElement('button');
     customBtn.className = 'custom-feed-btn';
     customBtn.textContent = this._t('send');
     customBtn.addEventListener('click', () => {
-      const doses = parseInt(dosenInput.value, 10) || 1;
-      this._feedNow(doses);
-      // Reset input after sending
-      dosenInput.value = '1';
+      const feedButtonEntity = cfg2.feed_button_entity;
+      if (!feedButtonEntity) {
+        applyStatus.textContent = 'No feed button configured';
+        return;
+      }
+      this._hass.callService('button', 'press', { entity_id: feedButtonEntity });
+      applyStatus.textContent = '✓ Sent!';
+      setTimeout(() => { applyStatus.textContent = ''; }, 2000);
     });
 
     customRow.appendChild(dosenInput);
+    if (customDosesEntity) customRow.appendChild(applyBtn);
     customRow.appendChild(customBtn);
     customSection.appendChild(customRow);
+    customSection.appendChild(applyStatus);
     container.appendChild(customSection);
 
     return container;
@@ -1636,7 +1673,8 @@ class PetfeederCard extends HTMLElement {
       .dial-center{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center}
       .dial-grams{font-size:48px;font-weight:300;color:var(--primary-text-color,#333);line-height:1}
       .dial-label{font-size:12px;color:var(--secondary-text-color,#888);margin-top:4px}
-      .next-schedule-row{margin-top:8px;margin-bottom:12px;font-size:13px;color:var(--secondary-text-color,#888);text-align:center}
+      .next-schedule-row{margin-top:8px;margin-bottom:4px;font-size:13px;color:var(--secondary-text-color,#888);text-align:center}
+      .last-feed-row{margin-bottom:12px;font-size:11px;color:var(--secondary-text-color,#888);text-align:center;opacity:0.8}
       .tab-btn{width:100%;padding:6px 4px;border:1px solid var(--divider-color,#e0e0e0);background:var(--secondary-background-color,#f5f5f5);color:var(--secondary-text-color,#888);font-size:11px;font-weight:500;cursor:pointer;transition:color 0.2s,border-color 0.2s,background 0.2s;border-radius:6px;text-align:center;white-space:normal;word-break:break-word;box-sizing:border-box;line-height:1.3}
       .tab-btn:hover{background:var(--ha-card-background,#fff);border-color:${accentColor}}
       .tab-btn.active{color:${accentColor};background:var(--ha-card-background,#fff);border-color:${accentColor}}
@@ -1795,6 +1833,16 @@ class PetfeederCard extends HTMLElement {
       nextRow.textContent = this._t('no_upcoming');
     }
     headerCenter.appendChild(nextRow);
+
+    // Last feed row (shown below next schedule when entity configured)
+    if (this._config.last_feed_entity) {
+      const lastFeedState = this._hass?.states[this._config.last_feed_entity];
+      const lastFeedRow = document.createElement('div');
+      lastFeedRow.className = 'last-feed-row';
+      lastFeedRow.textContent = `Last feed: ${lastFeedState ? lastFeedState.state : '-'}`;
+      headerCenter.appendChild(lastFeedRow);
+    }
+
     headerMain.appendChild(headerCenter);
 
     // Right: Tab buttons (vertical stack)
