@@ -1538,8 +1538,6 @@ class PetfeederCard extends HTMLElement {
     const rightContent = document.createElement('div');
     rightContent.className = 'log-history-panel';
     rightContent.style.cssText = 'flex:1;overflow-y:auto;max-height:200px;border:1px solid var(--divider-color,#e0e0e0);border-radius:6px;padding:8px';
-    // Store reference on instance so async callbacks can always reach the live element
-    this._logPanel = rightContent;
 
     if (historyEntities && historyEntities.filter(e => e).length > 0 && this._hass) {
       // --- History API mode ---
@@ -1547,9 +1545,19 @@ class PetfeederCard extends HTMLElement {
       const lastFetch = this._historyLogsFetched || 0;
       const now = Date.now();
 
-      // Render from cache immediately if available
+      // Render from cache if available, otherwise show loading/error
       if (cached && cached.length > 0) {
         this._renderLogEntries(rightContent, cached);
+      } else if (this._historyLogsFetchError && lastFetch === 0) {
+        const err = document.createElement('div');
+        err.style.cssText = 'text-align:center;color:#f44336;font-size:11px;padding:8px';
+        err.textContent = `History error: ${this._historyLogsFetchError}`;
+        rightContent.appendChild(err);
+      } else if (cached && cached.length === 0) {
+        const empty = document.createElement('div');
+        empty.style.cssText = 'text-align:center;color:#999;font-size:12px;padding:8px';
+        empty.textContent = this._t('no_feedings_logged');
+        rightContent.appendChild(empty);
       } else {
         const loading = document.createElement('div');
         loading.style.cssText = 'text-align:center;color:#999;font-size:12px;padding:8px';
@@ -1605,22 +1613,13 @@ class PetfeederCard extends HTMLElement {
           entries.sort((a, b) => b._ts - a._ts);
           this._historyLogs = entries;
 
-          panel.innerHTML = '';
-          if (entries.length === 0) {
-            const empty = document.createElement('div');
-            empty.style.cssText = 'text-align:center;color:#999;font-size:12px;padding:8px';
-            empty.textContent = this._t('no_feedings_logged');
-            panel.appendChild(empty);
-          } else {
-            this._renderLogEntries(panel, entries);
-          }
+          // Trigger a full re-render — shadow DOM may have been rebuilt since fetch started
+          this.render();
         }).catch(err => {
-          const panel = this._logPanel;
-          if (panel) {
-            panel.innerHTML = `<div style="text-align:center;color:#f44336;font-size:11px;padding:8px">History error: ${err?.message || String(err)}</div>`;
-          }
-          // Reset fetch timer so next render retries
-          this._historyLogsFetched = 0;
+          this._historyLogs = [];
+          this._historyLogsFetchError = err?.message || String(err);
+          this._historyLogsFetched = 0; // allow retry next render
+          this.render();
         });
       }
     } else if (logsEntity && this._hass) {
