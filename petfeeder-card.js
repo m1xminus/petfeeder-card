@@ -567,10 +567,12 @@ class PetfeederCard extends HTMLElement {
     }
 
     // Title
-    const title = document.createElement('div');
-    title.className = 'compact-title';
-    title.textContent = this._config.main_title || 'My Feeder';
-    infoWrapper.appendChild(title);
+    if (this._config.show_title !== false) {
+      const title = document.createElement('div');
+      title.className = 'compact-title';
+      title.textContent = this._config.main_title || 'My Feeder';
+      infoWrapper.appendChild(title);
+    }
 
     // Status items
     const statusDiv = document.createElement('div');
@@ -1339,13 +1341,32 @@ class PetfeederCard extends HTMLElement {
 
   _feedNow(doses) {
     if (!this._hass) return;
-    const feedButtonEntity = this._config.tabs_config?.manual_feed?.feed_button_entity;
+    const cfg = this._config.tabs_config?.manual_feed || {};
+    const feedButtonEntity = cfg.feed_button_entity;
+    const customDosesEntity = cfg.custom_doses_entity;
+
     if (!feedButtonEntity) {
       console.warn('Feed button entity not configured');
       return;
     }
-    // Call button.press service on the configured button entity
-    this._hass.callService('button', 'press', { entity_id: feedButtonEntity });
+
+    const doPress = () => {
+      this._hass.callService('button', 'press', { entity_id: feedButtonEntity });
+    };
+
+    // If a number/input_number entity is configured, set it first then press
+    if (customDosesEntity && doses != null) {
+      const domain = customDosesEntity.split('.')[0];
+      const service = (domain === 'input_number') ? 'set_value' : 'set_value';
+      this._hass.callService(domain, service, {
+        entity_id: customDosesEntity,
+        value: doses
+      });
+      // Small delay to let HA process the state change before pressing
+      setTimeout(doPress, 300);
+    } else {
+      doPress();
+    }
   }
 
   // --- Stats Tab ---
@@ -1423,28 +1444,65 @@ class PetfeederCard extends HTMLElement {
 
     if (logsEntity && this._hass) {
       const logState = this._hass.states[logsEntity];
-      if (logState && logState.attributes && Array.isArray(logState.attributes.logs)) {
-        const logs = logState.attributes.logs.slice(0, 4); // Show last 4 entries
-        if (logs.length === 0) {
+      const raw = logState ? logState.state : null;
+      const isEmpty = !raw || raw === 'No feedings logged yet' || raw === '' || raw === 'unknown' || raw === 'unavailable';
+
+      if (!isEmpty) {
+        // Parse newline-separated, comma-delimited log lines
+        const lines = raw.split('\n')
+          .map(l => l.trim())
+          .filter(l => l !== '')
+          .reverse(); // newest first
+
+        const validEntries = lines
+          .map(line => {
+            const cols = line.split(',');
+            return cols.length >= 4 ? cols : null;
+          })
+          .filter(Boolean)
+          .slice(0, 4); // show last 4
+
+        if (validEntries.length === 0) {
           const empty = document.createElement('div');
           empty.style.cssText = 'text-align:center;color:#999;font-size:12px;padding:8px';
           empty.textContent = 'No logs';
           rightContent.appendChild(empty);
         } else {
-          logs.forEach((log, idx) => {
+          validEntries.forEach((cols, idx) => {
             const logItem = document.createElement('div');
-            logItem.style.cssText = 'padding:6px;border-bottom:1px solid var(--divider-color,#e0e0e0);font-size:11px;color:var(--primary-text-color,#333);word-break:break-word';
-            if (idx === logs.length - 1) {
-              logItem.style.borderBottom = 'none';
+            logItem.style.cssText = `padding:5px 6px;${idx < validEntries.length - 1 ? 'border-bottom:1px solid var(--divider-color,#e0e0e0);' : ''}font-size:11px;color:var(--primary-text-color,#333)`;
+            // Date/time
+            const dt = document.createElement('div');
+            dt.style.cssText = 'font-size:10px;color:var(--secondary-text-color,#888);margin-bottom:2px';
+            dt.textContent = cols[0].trim();
+            // Info line: schedule + details + status
+            const info = document.createElement('div');
+            info.style.cssText = 'display:flex;justify-content:space-between;align-items:center;gap:4px';
+            const sched = document.createElement('span');
+            sched.style.cssText = 'font-weight:500;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
+            sched.textContent = cols[1].trim();
+            const detail = document.createElement('span');
+            detail.style.cssText = 'color:var(--secondary-text-color,#888);font-size:10px;flex:1;text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
+            detail.textContent = cols[2].trim();
+            const status = document.createElement('span');
+            status.style.cssText = 'font-size:10px;font-weight:500;color:#4caf50;flex-shrink:0';
+            const statusText = cols[3].trim();
+            if (statusText.toLowerCase().includes('error') || statusText.toLowerCase().includes('fail')) {
+              status.style.color = '#f44336';
             }
-            logItem.textContent = typeof log === 'string' ? log : JSON.stringify(log);
+            status.textContent = statusText;
+            info.appendChild(sched);
+            info.appendChild(detail);
+            info.appendChild(status);
+            logItem.appendChild(dt);
+            logItem.appendChild(info);
             rightContent.appendChild(logItem);
           });
         }
       } else {
         const empty = document.createElement('div');
         empty.style.cssText = 'text-align:center;color:#999;font-size:12px;padding:8px';
-        empty.textContent = 'No logs';
+        empty.textContent = 'No feedings logged yet';
         rightContent.appendChild(empty);
       }
     } else {
@@ -1579,7 +1637,7 @@ class PetfeederCard extends HTMLElement {
       .dial-grams{font-size:48px;font-weight:300;color:var(--primary-text-color,#333);line-height:1}
       .dial-label{font-size:12px;color:var(--secondary-text-color,#888);margin-top:4px}
       .next-schedule-row{margin-top:8px;margin-bottom:12px;font-size:13px;color:var(--secondary-text-color,#888);text-align:center}
-      .tab-btn{width:100%;padding:6px 6px;border:1px solid var(--divider-color,#e0e0e0);background:var(--secondary-background-color,#f5f5f5);color:var(--secondary-text-color,#888);font-size:10px;font-weight:500;cursor:pointer;transition:color 0.2s,border-color 0.2s,background 0.2s;border-radius:6px;text-align:center;white-space:nowrap;box-sizing:border-box;line-height:1.3}
+      .tab-btn{width:100%;padding:6px 4px;border:1px solid var(--divider-color,#e0e0e0);background:var(--secondary-background-color,#f5f5f5);color:var(--secondary-text-color,#888);font-size:11px;font-weight:500;cursor:pointer;transition:color 0.2s,border-color 0.2s,background 0.2s;border-radius:6px;text-align:center;white-space:normal;word-break:break-word;box-sizing:border-box;line-height:1.3}
       .tab-btn:hover{background:var(--ha-card-background,#fff);border-color:${accentColor}}
       .tab-btn.active{color:${accentColor};background:var(--ha-card-background,#fff);border-color:${accentColor}}
       .tab-content-area{background:${contentBg};padding:16px 16px 48px;border-top:1px solid var(--divider-color,#e0e0e0);min-height:60px;position:relative;max-height:0;overflow:hidden;opacity:0;padding-top:0;padding-bottom:0;border-top:none;transition:max-height 0.4s ease-out,opacity 0.3s ease-out,padding 0.4s ease-out,border-top 0s 0.4s}
@@ -1652,7 +1710,7 @@ class PetfeederCard extends HTMLElement {
         .dial-grams{font-size:36px}
         .dial-label{font-size:10px;margin-top:2px}
         .next-schedule-row{font-size:12px;margin-top:6px;margin-bottom:8px}
-        .tab-btn{font-size:11px;padding:10px 6px;width:100%;line-height:1.4}
+        .tab-btn{font-size:10px;padding:8px 3px;width:100%;line-height:1.3;white-space:normal;word-break:break-word}
         .left-status-icon{font-size:24px}
         .left-status-name{max-width:55px;font-size:10px}
         .left-status-state{font-size:9px}
@@ -1670,7 +1728,7 @@ class PetfeederCard extends HTMLElement {
         .dial-grams{font-size:32px}
         .dial-label{font-size:9px;margin-top:1px}
         .next-schedule-row{font-size:11px;margin-top:4px;margin-bottom:6px}
-        .tab-btn{font-size:10px;padding:10px 4px;width:100%;line-height:1.3}
+        .tab-btn{font-size:9px;padding:8px 2px;width:100%;line-height:1.3;white-space:normal;word-break:break-word}
         .left-status-icon{font-size:20px}
         .left-status-name{max-width:50px;font-size:9px}
         .left-status-state{font-size:8px}
@@ -2039,7 +2097,7 @@ class PetfeederCardEditor extends HTMLElement {
     }
 
     // === HEADER SECTION ===
-    editor.appendChild(this._buildSection('Header', false, (body) => {
+    editor.appendChild(this._buildSection('Header', true, (body) => {
       // Pet Image
       body.appendChild(this._buildTextField('Pet Image Path', this._config.image || '', '', v => {
         this._config.image = v;
