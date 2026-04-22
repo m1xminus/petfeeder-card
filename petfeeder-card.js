@@ -1555,8 +1555,8 @@ class PetfeederCard extends HTMLElement {
         rightContent.appendChild(err);
       } else if (cached && cached.length === 0) {
         const empty = document.createElement('div');
-        empty.style.cssText = 'text-align:center;color:#999;font-size:12px;padding:8px';
-        empty.textContent = this._t('no_feedings_logged');
+        empty.style.cssText = 'text-align:center;color:#999;font-size:11px;padding:8px;white-space:pre-wrap;word-break:break-all';
+        empty.textContent = this._historyDebug || this._t('no_feedings_logged');
         rightContent.appendChild(empty);
       } else {
         const loading = document.createElement('div');
@@ -1602,6 +1602,8 @@ class PetfeederCard extends HTMLElement {
           entries.sort((a, b) => b._ts - a._ts);
           this._historyLogs = entries;
           this._historyLogsFetchError = null;
+          // Debug: store raw summary for diagnosis
+          this._historyDebug = `entities in result: ${Object.keys(result||{}).join(', ')||'none'} | raw states: ${Object.values(result||{}).reduce((s,a)=>s+(a.length||0),0)} | matched: ${entries.length}`;
           this.render();
         }).catch(err => {
           this._historyLogs = [];
