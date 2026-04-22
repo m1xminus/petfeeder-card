@@ -1562,15 +1562,23 @@ class PetfeederCard extends HTMLElement {
         this._historyLogsFetched = now;
         const start = new Date(now - historyDays * 86400000).toISOString();
         const entityParam = historyEntities.filter(e => e).join(',');
-        this._hass.callApi('GET',
-          `history/period/${start}?filter_entity_id=${entityParam}&minimal_response=false&no_attributes=true&significant_changes_only=false`
-        ).then(history => {
-          // Use stored reference — always the live DOM node
+        const apiPath = `history/period/${start}?filter_entity_id=${entityParam}&minimal_response=false&no_attributes=true&significant_changes_only=false`;
+
+        // Use fetch() directly with Bearer token — more reliable than callApi across HA versions
+        const token = this._hass.auth?.data?.access_token;
+        const fetchPromise = token
+          ? fetch(`/api/${apiPath}`, { headers: { Authorization: `Bearer ${token}` } }).then(r => {
+              if (!r.ok) throw new Error(`HTTP ${r.status}`);
+              return r.json();
+            })
+          : Promise.resolve().then(() => this._hass.callApi('GET', apiPath));
+
+        fetchPromise.then(history => {
           const panel = this._logPanel;
           if (!panel) return;
 
           if (!Array.isArray(history)) {
-            panel.innerHTML = `<div style="text-align:center;color:#f44336;font-size:11px;padding:8px">Unexpected API response: ${JSON.stringify(history).substring(0,100)}</div>`;
+            panel.innerHTML = `<div style="text-align:center;color:#f44336;font-size:11px;padding:8px;word-break:break-all">Unexpected response: ${JSON.stringify(history).substring(0,150)}</div>`;
             return;
           }
 
@@ -1609,8 +1617,10 @@ class PetfeederCard extends HTMLElement {
         }).catch(err => {
           const panel = this._logPanel;
           if (panel) {
-            panel.innerHTML = `<div style="text-align:center;color:#f44336;font-size:11px;padding:8px">History API error: ${err?.message || String(err)}</div>`;
+            panel.innerHTML = `<div style="text-align:center;color:#f44336;font-size:11px;padding:8px">History error: ${err?.message || String(err)}</div>`;
           }
+          // Reset fetch timer so next render retries
+          this._historyLogsFetched = 0;
         });
       }
     } else if (logsEntity && this._hass) {
