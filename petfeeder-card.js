@@ -1538,8 +1538,10 @@ class PetfeederCard extends HTMLElement {
     const rightContent = document.createElement('div');
     rightContent.className = 'log-history-panel';
     rightContent.style.cssText = 'flex:1;overflow-y:auto;max-height:200px;border:1px solid var(--divider-color,#e0e0e0);border-radius:6px;padding:8px';
+    // Store reference on instance so async callbacks can always reach the live element
+    this._logPanel = rightContent;
 
-    if (historyEntities && this._hass) {
+    if (historyEntities && historyEntities.filter(e => e).length > 0 && this._hass) {
       // --- History API mode ---
       const cached = this._historyLogs;
       const lastFetch = this._historyLogsFetched || 0;
@@ -1563,12 +1565,12 @@ class PetfeederCard extends HTMLElement {
         this._hass.callApi('GET',
           `history/period/${start}?filter_entity_id=${entityParam}&minimal_response=false&no_attributes=true&significant_changes_only=false`
         ).then(history => {
-          // Always find the live panel element in case DOM was rebuilt
-          const livePanel = (this._shadow || this.shadowRoot).querySelector('.log-history-panel');
-          if (!livePanel) return;
+          // Use stored reference — always the live DOM node
+          const panel = this._logPanel;
+          if (!panel) return;
 
           if (!Array.isArray(history)) {
-            livePanel.innerHTML = '<div style="text-align:center;color:#f44336;font-size:11px;padding:8px">Unexpected API response</div>';
+            panel.innerHTML = `<div style="text-align:center;color:#f44336;font-size:11px;padding:8px">Unexpected API response: ${JSON.stringify(history).substring(0,100)}</div>`;
             return;
           }
 
@@ -1578,18 +1580,14 @@ class PetfeederCard extends HTMLElement {
             entityHistory.forEach(item => {
               const state = item.state;
               if (!state || state === 'unknown' || state === 'unavailable') return;
-              // Accept Delivered and any error/fail state
               const sl = state.toLowerCase();
               if (!sl.includes('deliver') && !sl.includes('error') && !sl.includes('fail')) return;
-              // Derive schedule name from entity_id: "..._schedule_1_delivery_status" → "Schedule 1"
               const match = (item.entity_id || '').match(/schedule_(\d+)/);
               const schedNum = match ? match[1] : '?';
               const schedName = `Schedule ${schedNum}`;
-              // Look up current info for that schedule number
               const infoEntityId = (item.entity_id || '').replace(/_delivery_status$/, '_info');
               const infoState = this._hass.states[infoEntityId];
               const info = infoState ? infoState.state : '';
-              // Format timestamp
               const ts = new Date(item.last_changed || item.last_updated);
               const timestamp = `${ts.getFullYear()}-${String(ts.getMonth()+1).padStart(2,'0')}-${String(ts.getDate()).padStart(2,'0')} ${String(ts.getHours()).padStart(2,'0')}:${String(ts.getMinutes()).padStart(2,'0')}:${String(ts.getSeconds()).padStart(2,'0')}`;
               entries.push({ timestamp, schedule: schedName, info, status: state, _ts: ts.getTime() });
@@ -1599,19 +1597,19 @@ class PetfeederCard extends HTMLElement {
           entries.sort((a, b) => b._ts - a._ts);
           this._historyLogs = entries;
 
-          livePanel.innerHTML = '';
+          panel.innerHTML = '';
           if (entries.length === 0) {
             const empty = document.createElement('div');
             empty.style.cssText = 'text-align:center;color:#999;font-size:12px;padding:8px';
             empty.textContent = this._t('no_feedings_logged');
-            livePanel.appendChild(empty);
+            panel.appendChild(empty);
           } else {
-            this._renderLogEntries(livePanel, entries);
+            this._renderLogEntries(panel, entries);
           }
         }).catch(err => {
-          const livePanel = (this._shadow || this.shadowRoot).querySelector('.log-history-panel');
-          if (livePanel && (!this._historyLogs || this._historyLogs.length === 0)) {
-            livePanel.innerHTML = `<div style="text-align:center;color:#f44336;font-size:11px;padding:8px">History API error: ${err?.message || err}</div>`;
+          const panel = this._logPanel;
+          if (panel) {
+            panel.innerHTML = `<div style="text-align:center;color:#f44336;font-size:11px;padding:8px">History API error: ${err?.message || String(err)}</div>`;
           }
         });
       }
