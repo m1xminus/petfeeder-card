@@ -1504,65 +1504,83 @@ class PetfeederCard extends HTMLElement {
 
     if (logsEntity && this._hass) {
       const logState = this._hass.states[logsEntity];
-      const raw = logState ? logState.state : null;
-      const isEmpty = !raw || raw === 'No feedings logged yet' || raw === '' || raw === 'unknown' || raw === 'unavailable';
 
-      if (!isEmpty) {
-        // Parse newline-separated, comma-delimited log lines
-        const lines = raw.split('\n')
-          .map(l => l.trim())
-          .filter(l => l !== '')
-          .reverse(); // newest first
+      if (!logState) {
+        const empty = document.createElement('div');
+        empty.style.cssText = 'text-align:center;color:#f44336;font-size:11px;padding:8px;word-break:break-all';
+        empty.textContent = `Entity not found: ${logsEntity}`;
+        rightContent.appendChild(empty);
+      } else {
+        // Prefer attributes.lines array (JSON sensor), fall back to parsing state string
+        let rawLines = null;
+        if (Array.isArray(logState.attributes && logState.attributes.lines)) {
+          // JSON sensor: lines are already split, newest last — reverse for newest first
+          rawLines = [...logState.attributes.lines].reverse();
+        } else {
+          const stateStr = logState.state;
+          const noData = !stateStr || stateStr === '' || stateStr === 'unknown' || stateStr === 'unavailable' || stateStr.trim() === 'No feedings logged yet';
+          if (!noData) {
+            rawLines = stateStr.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0).reverse();
+          }
+        }
 
-        const validEntries = lines
-          .map(line => {
-            const cols = line.split(',');
-            return cols.length >= 4 ? cols : null;
-          })
-          .filter(Boolean); // all entries, newest first; panel is scrollable
-
-        if (validEntries.length === 0) {
+        if (!rawLines || rawLines.length === 0) {
           const empty = document.createElement('div');
           empty.style.cssText = 'text-align:center;color:#999;font-size:12px;padding:8px';
-          empty.textContent = this._t('no_logs');
+          empty.textContent = this._t('no_feedings_logged');
           rightContent.appendChild(empty);
         } else {
-          validEntries.forEach((cols, idx) => {
-            const logItem = document.createElement('div');
-            logItem.style.cssText = `padding:5px 6px;${idx < validEntries.length - 1 ? 'border-bottom:1px solid var(--divider-color,#e0e0e0);' : ''}font-size:11px;color:var(--primary-text-color,#333)`;
-            // Date/time
-            const dt = document.createElement('div');
-            dt.style.cssText = 'font-size:10px;color:var(--secondary-text-color,#888);margin-bottom:2px';
-            dt.textContent = cols[0].trim();
-            // Info line: schedule + details + status
-            const info = document.createElement('div');
-            info.style.cssText = 'display:flex;justify-content:space-between;align-items:center;gap:4px';
-            const sched = document.createElement('span');
-            sched.style.cssText = 'font-weight:500;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
-            sched.textContent = cols[1].trim();
-            const detail = document.createElement('span');
-            detail.style.cssText = 'color:var(--secondary-text-color,#888);font-size:10px;flex:1;text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
-            detail.textContent = cols[2].trim();
-            const status = document.createElement('span');
-            status.style.cssText = 'font-size:10px;font-weight:500;color:#4caf50;flex-shrink:0';
-            const statusText = cols[3].trim();
-            if (statusText.toLowerCase().includes('error') || statusText.toLowerCase().includes('fail')) {
-              status.style.color = '#f44336';
-            }
-            status.textContent = statusText;
-            info.appendChild(sched);
-            info.appendChild(detail);
-            info.appendChild(status);
-            logItem.appendChild(dt);
-            logItem.appendChild(info);
-            rightContent.appendChild(logItem);
-          });
+          // Smart CSV parse: col0=timestamp, col1=schedule, col_last=status, middle=info
+          const parseLine = line => {
+            const cols = line.split(',');
+            if (cols.length < 4) return null;
+            const timestamp = cols[0].trim();
+            if (!/^\d{4}-\d{2}-\d{2}/.test(timestamp)) return null;
+            return {
+              timestamp,
+              schedule: cols[1].trim(),
+              status:   cols[cols.length - 1].trim(),
+              info:     cols.slice(2, -1).join(',').trim()
+            };
+          };
+
+          const validEntries = rawLines.map(parseLine).filter(Boolean);
+
+          if (validEntries.length === 0) {
+            const dbg = document.createElement('div');
+            dbg.style.cssText = 'font-size:10px;color:#888;padding:4px;word-break:break-all;font-family:monospace;white-space:pre-wrap';
+            dbg.textContent = rawLines.slice(0, 5).join('\n').substring(0, 300);
+            rightContent.appendChild(dbg);
+          } else {
+            validEntries.forEach((entry, idx) => {
+              const logItem = document.createElement('div');
+              logItem.style.cssText = `padding:5px 6px;${idx < validEntries.length - 1 ? 'border-bottom:1px solid var(--divider-color,#e0e0e0);' : ''}font-size:11px;color:var(--primary-text-color,#333)`;
+              const dt = document.createElement('div');
+              dt.style.cssText = 'font-size:10px;color:var(--secondary-text-color,#888);margin-bottom:2px';
+              dt.textContent = entry.timestamp;
+              const infoRow = document.createElement('div');
+              infoRow.style.cssText = 'display:flex;justify-content:space-between;align-items:center;gap:4px';
+              const sched = document.createElement('span');
+              sched.style.cssText = 'font-weight:500;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
+              sched.textContent = entry.schedule;
+              const detail = document.createElement('span');
+              detail.style.cssText = 'color:var(--secondary-text-color,#888);font-size:10px;flex:1;text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
+              detail.textContent = entry.info;
+              const statusEl = document.createElement('span');
+              statusEl.style.cssText = 'font-size:10px;font-weight:500;color:#4caf50;flex-shrink:0';
+              if (entry.status.toLowerCase().includes('error') || entry.status.toLowerCase().includes('fail')) {
+                statusEl.style.color = '#f44336';
+              }
+              statusEl.textContent = entry.status;
+              infoRow.appendChild(sched);
+              infoRow.appendChild(detail);
+              infoRow.appendChild(statusEl);
+              logItem.appendChild(dt);
+              logItem.appendChild(infoRow);
+              rightContent.appendChild(logItem);
+            });
+          }
         }
-      } else {
-        const empty = document.createElement('div');
-        empty.style.cssText = 'text-align:center;color:#999;font-size:12px;padding:8px';
-        empty.textContent = this._t('no_feedings_logged');
-        rightContent.appendChild(empty);
       }
     } else {
       const empty = document.createElement('div');
