@@ -1571,8 +1571,8 @@ class PetfeederCard extends HTMLElement {
         const startTime = new Date(now - historyDays * 86400000).toISOString();
         const validEntities = historyEntities.filter(e => e);
 
-        // Use WebSocket API — the correct method for HA Lovelace custom cards
-        this._hass.callWs({
+        // Use WebSocket connection — correct method for HA Lovelace cards
+        this._hass.connection.sendMessagePromise({
           type: 'history/history_during_period',
           start_time: startTime,
           entity_ids: validEntities,
