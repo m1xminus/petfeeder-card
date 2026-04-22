@@ -1568,40 +1568,30 @@ class PetfeederCard extends HTMLElement {
       // Fetch fresh data if cache is stale (>60s) or empty
       if (now - lastFetch > 60000) {
         this._historyLogsFetched = now;
-        const start = new Date(now - historyDays * 86400000).toISOString();
-        const entityParam = historyEntities.filter(e => e).join(',');
-        const apiPath = `history/period/${start}?filter_entity_id=${entityParam}&minimal_response=false&no_attributes=true&significant_changes_only=false`;
+        const startTime = new Date(now - historyDays * 86400000).toISOString();
+        const validEntities = historyEntities.filter(e => e);
 
-        // Use fetch() directly with Bearer token — more reliable than callApi across HA versions
-        const token = this._hass.auth?.data?.access_token;
-        const fetchPromise = token
-          ? fetch(`/api/${apiPath}`, { headers: { Authorization: `Bearer ${token}` } }).then(r => {
-              if (!r.ok) throw new Error(`HTTP ${r.status}`);
-              return r.json();
-            })
-          : Promise.resolve().then(() => this._hass.callApi('GET', apiPath));
-
-        fetchPromise.then(history => {
-          const panel = this._logPanel;
-          if (!panel) return;
-
-          if (!Array.isArray(history)) {
-            panel.innerHTML = `<div style="text-align:center;color:#f44336;font-size:11px;padding:8px;word-break:break-all">Unexpected response: ${JSON.stringify(history).substring(0,150)}</div>`;
-            return;
-          }
-
+        // Use WebSocket API — the correct method for HA Lovelace custom cards
+        this._hass.callWs({
+          type: 'history/history_during_period',
+          start_time: startTime,
+          entity_ids: validEntities,
+          significant_changes_only: false,
+          no_attributes: true,
+        }).then(result => {
+          // result is { 'entity.id': [{state, last_changed, last_updated}, ...], ... }
           const entries = [];
-          history.forEach(entityHistory => {
-            if (!Array.isArray(entityHistory)) return;
-            entityHistory.forEach(item => {
+          Object.entries(result || {}).forEach(([entityId, stateList]) => {
+            if (!Array.isArray(stateList)) return;
+            stateList.forEach(item => {
               const state = item.state;
               if (!state || state === 'unknown' || state === 'unavailable') return;
               const sl = state.toLowerCase();
               if (!sl.includes('deliver') && !sl.includes('error') && !sl.includes('fail')) return;
-              const match = (item.entity_id || '').match(/schedule_(\d+)/);
+              const match = entityId.match(/schedule_(\d+)/);
               const schedNum = match ? match[1] : '?';
               const schedName = `Schedule ${schedNum}`;
-              const infoEntityId = (item.entity_id || '').replace(/_delivery_status$/, '_info');
+              const infoEntityId = entityId.replace(/_delivery_status$/, '_info');
               const infoState = this._hass.states[infoEntityId];
               const info = infoState ? infoState.state : '';
               const ts = new Date(item.last_changed || item.last_updated);
@@ -1609,16 +1599,14 @@ class PetfeederCard extends HTMLElement {
               entries.push({ timestamp, schedule: schedName, info, status: state, _ts: ts.getTime() });
             });
           });
-
           entries.sort((a, b) => b._ts - a._ts);
           this._historyLogs = entries;
-
-          // Trigger a full re-render — shadow DOM may have been rebuilt since fetch started
+          this._historyLogsFetchError = null;
           this.render();
         }).catch(err => {
           this._historyLogs = [];
           this._historyLogsFetchError = err?.message || String(err);
-          this._historyLogsFetched = 0; // allow retry next render
+          this._historyLogsFetched = 0;
           this.render();
         });
       }
