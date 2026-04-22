@@ -754,9 +754,10 @@ class PetfeederCard extends HTMLElement {
     nextEl.appendChild(nextLabel);
     statsDiv.appendChild(nextEl);
 
-    // Last feed (if entity is configured)
-    if (this._config.compact_config?.last_feed_entity) {
-      const lastFeedState = this._hass?.states[this._config.compact_config.last_feed_entity];
+    // Last feed (if entity is configured — falls back to top-level last_feed_entity)
+    const compactLastFeedEntity = this._config.compact_config?.last_feed_entity || this._config.last_feed_entity;
+    if (compactLastFeedEntity) {
+      const lastFeedState = this._hass?.states[compactLastFeedEntity];
       const lastFeedEl = document.createElement('div');
       lastFeedEl.className = 'compact-stat';
       const lastFeedVal = document.createElement('div');
