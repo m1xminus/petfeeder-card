@@ -1588,6 +1588,7 @@ class PetfeederCard extends HTMLElement {
               // HA compressed format: s=state, lu=last_updated (Unix float), lc=last_changed
               const state = item.s ?? item.state;
               if (!state || state === 'unknown' || state === 'unavailable') return;
+              if (!/delivered/i.test(state) || /not.delivered/i.test(state)) return;
               allStates.push(state);
               const match = entityId.match(/schedule_(\d+)/);
               const schedNum = match ? match[1] : '?';
