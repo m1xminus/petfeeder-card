@@ -1581,13 +1581,14 @@ class PetfeederCard extends HTMLElement {
         }).then(result => {
           // result is { 'entity.id': [{state, last_changed, last_updated}, ...], ... }
           const entries = [];
+          const allStates = [];
           Object.entries(result || {}).forEach(([entityId, stateList]) => {
             if (!Array.isArray(stateList)) return;
             stateList.forEach(item => {
               const state = item.state;
               if (!state || state === 'unknown' || state === 'unavailable') return;
-              const sl = state.toLowerCase();
-              if (!sl.includes('deliver') && !sl.includes('error') && !sl.includes('fail')) return;
+              allStates.push(state);
+              // No state filter — user should only add delivery status entities
               const match = entityId.match(/schedule_(\d+)/);
               const schedNum = match ? match[1] : '?';
               const schedName = `Schedule ${schedNum}`;
@@ -1599,11 +1600,11 @@ class PetfeederCard extends HTMLElement {
               entries.push({ timestamp, schedule: schedName, info, status: state, _ts: ts.getTime() });
             });
           });
+          const uniqueStates = [...new Set(allStates)].slice(0, 5);
+          this._historyDebug = `${allStates.length} states | sample: ${uniqueStates.join(', ')}`;
           entries.sort((a, b) => b._ts - a._ts);
           this._historyLogs = entries;
           this._historyLogsFetchError = null;
-          // Debug: store raw summary for diagnosis
-          this._historyDebug = `entities in result: ${Object.keys(result||{}).join(', ')||'none'} | raw states: ${Object.values(result||{}).reduce((s,a)=>s+(a.length||0),0)} | matched: ${entries.length}`;
           this.render();
         }).catch(err => {
           this._historyLogs = [];
