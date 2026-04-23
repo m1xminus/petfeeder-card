@@ -3367,16 +3367,68 @@ class PetfeederCardEditor extends HTMLElement {
         statsConfig.logs_history_entities = [];
       }
 
-      // --- History Entities section ---
+      // --- Header fields (outside tabs) ---
+      content.appendChild(this._buildTextField('Left Header Text', statsConfig.left_header || 'Stats', 'e.g., Stats', v => {
+        if (!this._config.tabs_config.stats) this._config.tabs_config.stats = {};
+        this._config.tabs_config.stats.left_header = v || 'Stats';
+        this._dispatch();
+      }));
+
+      content.appendChild(this._buildTextField('Right Header Text', statsConfig.right_header || 'Feed History', 'e.g., Feed History', v => {
+        if (!this._config.tabs_config.stats) this._config.tabs_config.stats = {};
+        this._config.tabs_config.stats.right_header = v || 'Feed History';
+        this._dispatch();
+      }));
+
+      // --- Collapsible tabs container ---
+      const tabsContainer = document.createElement('div');
+      tabsContainer.style.cssText = 'margin-top:16px';
+
+      // Helper to create a collapsible tab section
+      const createCollapsibleTab = (title, collapsed = true) => {
+        const tabSection = document.createElement('div');
+        tabSection.style.cssText = 'margin-bottom:12px;border:1px solid var(--divider-color,#e0e0e0);border-radius:6px;overflow:hidden';
+
+        const header = document.createElement('div');
+        header.style.cssText = 'background:var(--secondary-background-color,#f5f5f5);padding:12px;cursor:pointer;display:flex;align-items:center;justify-content:space-between;user-select:none';
+        const headerText = document.createElement('span');
+        headerText.style.cssText = 'font-weight:600;color:var(--primary-text-color,#333)';
+        headerText.textContent = title;
+        const arrow = document.createElement('span');
+        arrow.style.cssText = 'font-size:12px;transition:transform 0.2s;transform:' + (collapsed ? 'rotate(-90deg)' : 'rotate(0)');
+        arrow.textContent = '▼';
+
+        header.appendChild(headerText);
+        header.appendChild(arrow);
+
+        const body = document.createElement('div');
+        body.style.cssText = 'padding:12px;background:var(--ha-card-background,#fff);display:' + (collapsed ? 'none' : 'block');
+
+        header.addEventListener('click', () => {
+          const isHidden = body.style.display === 'none';
+          body.style.display = isHidden ? 'block' : 'none';
+          arrow.style.transform = isHidden ? 'rotate(0)' : 'rotate(-90deg)';
+        });
+
+        tabSection.appendChild(header);
+        tabSection.appendChild(body);
+
+        return { tabSection, body };
+      };
+
+      // --- Feed History Tab ---
+      const { tabSection: feedHistoryTab, body: feedHistoryBody } = createCollapsibleTab('Feed History', true);
+
+      // Delivery Status Entities section
       const histLabel = document.createElement('div');
-      histLabel.style.cssText = 'font-size:13px;font-weight:600;margin:12px 0 6px';
-      histLabel.textContent = 'Feed History — Delivery Status Entities';
-      content.appendChild(histLabel);
+      histLabel.style.cssText = 'font-size:13px;font-weight:600;margin:0 0 8px;color:var(--primary-text-color,#333)';
+      histLabel.textContent = 'Delivery Status Entities';
+      feedHistoryBody.appendChild(histLabel);
 
       const histDesc = document.createElement('div');
       histDesc.style.cssText = 'font-size:11px;color:var(--secondary-text-color,#888);margin-bottom:8px';
-      histDesc.textContent = 'Add the delivery status sensor for each schedule. History is read from HA recorder — no extra sensors needed.';
-      content.appendChild(histDesc);
+      histDesc.textContent = 'Add the delivery status sensor for each schedule. History is read from HA recorder.';
+      feedHistoryBody.appendChild(histDesc);
 
       const histEntities = statsConfig.logs_history_entities;
       histEntities.forEach((entityId, idx) => {
@@ -3399,7 +3451,7 @@ class PetfeederCardEditor extends HTMLElement {
         });
         row.appendChild(picker);
         row.appendChild(removeBtn);
-        content.appendChild(row);
+        feedHistoryBody.appendChild(row);
       });
 
       const addHistBtn = document.createElement('button');
@@ -3412,10 +3464,10 @@ class PetfeederCardEditor extends HTMLElement {
         this._dispatch();
         this._render();
       });
-      content.appendChild(addHistBtn);
+      feedHistoryBody.appendChild(addHistBtn);
 
       // History days
-      content.appendChild(this._buildTextField('History Days', String(statsConfig.logs_history_days ?? 7), 'Days of history to show (default 7)', v => {
+      feedHistoryBody.appendChild(this._buildTextField('History Days', String(statsConfig.logs_history_days ?? 7), 'Days of history to show (default 7)', v => {
         if (!this._config.tabs_config.stats) this._config.tabs_config.stats = {};
         const n = parseInt(v);
         this._config.tabs_config.stats.logs_history_days = isNaN(n) ? 7 : n;
@@ -3428,14 +3480,14 @@ class PetfeederCardEditor extends HTMLElement {
       }
 
       const btnFeedLabel = document.createElement('div');
-      btnFeedLabel.style.cssText = 'font-size:13px;font-weight:600;margin:14px 0 4px';
-      btnFeedLabel.textContent = 'Feed History — Manual Button Presses';
-      content.appendChild(btnFeedLabel);
+      btnFeedLabel.style.cssText = 'font-size:13px;font-weight:600;margin:14px 0 8px;color:var(--primary-text-color,#333)';
+      btnFeedLabel.textContent = 'Manual Button Presses';
+      feedHistoryBody.appendChild(btnFeedLabel);
 
       const btnFeedDesc = document.createElement('div');
       btnFeedDesc.style.cssText = 'font-size:11px;color:var(--secondary-text-color,#888);margin-bottom:8px';
-      btnFeedDesc.textContent = 'Track button entities (e.g. quick-feed buttons). Set doses/grams or enable Custom for unknown amounts. Who pressed it is resolved from HA logbook.';
-      content.appendChild(btnFeedDesc);
+      btnFeedDesc.textContent = 'Track button entities. Set doses/grams or enable Custom for unknown amounts.';
+      feedHistoryBody.appendChild(btnFeedDesc);
 
       const btnEntities = statsConfig.button_feed_entities;
       btnEntities.forEach((btnDef, idx) => {
@@ -3497,55 +3549,44 @@ class PetfeederCardEditor extends HTMLElement {
         });
         btnCard.appendChild(removeBtnFeed);
 
-        content.appendChild(btnCard);
+        feedHistoryBody.appendChild(btnCard);
       });
 
       const addBtnFeedBtn = document.createElement('button');
       addBtnFeedBtn.className = 'pf-btn pf-btn-primary pf-btn-sm';
       addBtnFeedBtn.textContent = '+ Add Button Entity';
-      addBtnFeedBtn.style.marginBottom = '14px';
+      addBtnFeedBtn.style.marginBottom = '12px';
       addBtnFeedBtn.addEventListener('click', () => {
         if (!Array.isArray(this._config.tabs_config.stats.button_feed_entities)) this._config.tabs_config.stats.button_feed_entities = [];
         this._config.tabs_config.stats.button_feed_entities.push({ entity: '', label: '', doses: 0, grams: 0, custom: false });
         this._dispatch();
         this._render();
       });
-      content.appendChild(addBtnFeedBtn);
+      feedHistoryBody.appendChild(addBtnFeedBtn);
 
       // Legacy CSV logs entity (fallback)
       const legacyLabel = document.createElement('div');
       legacyLabel.style.cssText = 'font-size:12px;font-weight:600;margin:12px 0 4px;color:var(--secondary-text-color,#888)';
-      legacyLabel.textContent = 'Legacy: CSV Logs Entity (fallback if no history entities set)';
-      content.appendChild(legacyLabel);
+      legacyLabel.textContent = 'Legacy: CSV Logs Entity (fallback)';
+      feedHistoryBody.appendChild(legacyLabel);
 
-      content.appendChild(this._buildHaEntityPicker('CSV Logs Entity', statsConfig.logs_entity || '', v => {
+      feedHistoryBody.appendChild(this._buildHaEntityPicker('CSV Logs Entity', statsConfig.logs_entity || '', v => {
         if (!this._config.tabs_config.stats) this._config.tabs_config.stats = {};
         this._config.tabs_config.stats.logs_entity = v || null;
         this._dispatch();
       }));
 
-      // Left header
-      content.appendChild(this._buildTextField('Left Header Text', statsConfig.left_header || 'Stats', 'e.g., Stats', v => {
-        if (!this._config.tabs_config.stats) this._config.tabs_config.stats = {};
-        this._config.tabs_config.stats.left_header = v || 'Stats';
-        this._dispatch();
-      }));
+      tabsContainer.appendChild(feedHistoryTab);
 
-      // Right header
-      content.appendChild(this._buildTextField('Right Header Text', statsConfig.right_header || 'Feed History', 'e.g., Feed History', v => {
-        if (!this._config.tabs_config.stats) this._config.tabs_config.stats = {};
-        this._config.tabs_config.stats.right_header = v || 'Feed History';
-        this._dispatch();
-      }));
+      // --- Stats Tab ---
+      const { tabSection: statsTab, body: statsBody } = createCollapsibleTab('Stats', true);
 
-      // Stats items
       const stats = statsConfig.items || [];
 
       const addStatBtn = document.createElement('button');
       addStatBtn.className = 'pf-btn pf-btn-primary pf-btn-sm';
       addStatBtn.textContent = '+ Add Stat Item';
       addStatBtn.style.marginBottom = '8px';
-      addStatBtn.style.marginTop = '12px';
       addStatBtn.addEventListener('click', () => {
         if (!this._config.tabs_config.stats) this._config.tabs_config.stats = {};
         if (!this._config.tabs_config.stats.items) this._config.tabs_config.stats.items = [];
@@ -3553,25 +3594,25 @@ class PetfeederCardEditor extends HTMLElement {
         this._dispatch();
         this._render();
       });
-      content.appendChild(addStatBtn);
+      statsBody.appendChild(addStatBtn);
 
       stats.forEach((stat, idx) => {
         const card = document.createElement('div');
         card.className = 'pf-status-card';
 
-        content.appendChild(this._buildHaEntityPicker('Entity', stat.entity || '', v => {
+        statsBody.appendChild(this._buildHaEntityPicker('Entity', stat.entity || '', v => {
           if (!this._config.tabs_config.stats.items) this._config.tabs_config.stats.items = [];
           this._config.tabs_config.stats.items[idx].entity = v || null;
           this._dispatch();
         }));
 
-        content.appendChild(this._buildTextField('Label', stat.label || '', 'Stat name', v => {
+        statsBody.appendChild(this._buildTextField('Label', stat.label || '', 'Stat name', v => {
           if (!this._config.tabs_config.stats.items) this._config.tabs_config.stats.items = [];
           this._config.tabs_config.stats.items[idx].label = v || null;
           this._dispatch();
         }));
 
-        content.appendChild(this._buildTextField('Unit', stat.unit || '', 'e.g., g, %', v => {
+        statsBody.appendChild(this._buildTextField('Unit', stat.unit || '', 'e.g., g, %', v => {
           if (!this._config.tabs_config.stats.items) this._config.tabs_config.stats.items = [];
           this._config.tabs_config.stats.items[idx].unit = v || null;
           this._dispatch();
@@ -3587,8 +3628,11 @@ class PetfeederCardEditor extends HTMLElement {
           this._dispatch();
           this._render();
         });
-        content.appendChild(removeBtn);
+        statsBody.appendChild(removeBtn);
       });
+
+      tabsContainer.appendChild(statsTab);
+      content.appendChild(tabsContainer);
     } else if (tabKey === 'settings') {
       const settings = this._config.tabs_config?.settings || [];
 
