@@ -1706,29 +1706,40 @@ class PetfeederCard extends HTMLElement {
           }
           this._userMap = userMap;
 
-          // Build logbook entry list for ±3s window matching
-          // (exact-second key matching is unreliable due to sub-second timing differences
-          // between the history recorder and the logbook)
+          // Build logbook entry list for ±3s window matching.
+          // Modern HA (2022.10+) returns `when` as a Unix float (seconds), older as ISO string.
+          // We normalise both to milliseconds.
           const logbookEntries = [];
           const logbookResult = results.find(r => r.type === 'logbook');
           if (logbookResult) {
             (logbookResult.result || []).forEach(entry => {
-              if (!entry.context_user_id) return;
-              const userName = userMap[entry.context_user_id] || null;
+              // Try context_user_id first; fall back to context.user_id nested object
+              const userId = entry.context_user_id ?? entry.context?.user_id ?? null;
+              if (!userId) return;
+              const userName = userMap[userId] || null;
               if (!userName) return;
-              const tsMs = entry.when ? new Date(entry.when).getTime() : 0;
+              const rawWhen = entry.when;
+              // If > 1e10 it's already in milliseconds; if < 1e10 it's seconds (Unix float)
+              const tsMs = rawWhen
+                ? (typeof rawWhen === 'number'
+                    ? (rawWhen > 1e10 ? rawWhen : rawWhen * 1000)
+                    : new Date(rawWhen).getTime())
+                : 0;
               if (!tsMs) return;
-              logbookEntries.push({ entityId: entry.entity_id, tsMs, userName });
+              // entity_id on the logbook entry; button press entries use the button entity_id
+              const entityId = entry.entity_id ?? null;
+              if (!entityId) return;
+              logbookEntries.push({ entityId, tsMs, userName });
             });
           }
-          // Find closest logbook entry within ±3 seconds for a given entity + timestamp
+          // Find closest logbook entry within ±5 seconds for a given entity + timestamp
           const findLogbookUser = (entityId, tsMs) => {
             let best = null;
             let bestDiff = Infinity;
             for (const e of logbookEntries) {
               if (e.entityId !== entityId) continue;
               const diff = Math.abs(e.tsMs - tsMs);
-              if (diff <= 3000 && diff < bestDiff) { best = e; bestDiff = diff; }
+              if (diff <= 5000 && diff < bestDiff) { best = e; bestDiff = diff; }
             }
             return best ? best.userName : '';
           };
