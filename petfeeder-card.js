@@ -1451,12 +1451,12 @@ class PetfeederCard extends HTMLElement {
       dt.style.cssText = 'font-size:10px;color:var(--secondary-text-color,#888);margin-bottom:2px';
       dt.textContent = entry.timestamp;
       const infoRow = document.createElement('div');
-      infoRow.style.cssText = 'display:flex;justify-content:space-between;align-items:center;gap:4px';
+      infoRow.style.cssText = 'display:flex;justify-content:space-between;align-items:flex-start;gap:4px;flex-wrap:wrap';
       const sched = document.createElement('span');
-      sched.style.cssText = 'font-weight:500;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
+      sched.style.cssText = 'font-weight:500;flex:1;min-width:0;word-break:break-word';
       sched.textContent = entry.schedule;
       const detail = document.createElement('span');
-      detail.style.cssText = 'color:var(--secondary-text-color,#888);font-size:10px;flex:1;text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
+      detail.style.cssText = 'color:var(--secondary-text-color,#888);font-size:10px;flex:1;min-width:0;text-align:center;word-break:break-word';
       detail.textContent = entry.info;
       const statusEl = document.createElement('span');
       statusEl.style.cssText = 'font-size:10px;font-weight:500;color:#4caf50;flex-shrink:0';
@@ -1477,7 +1477,7 @@ class PetfeederCard extends HTMLElement {
 
   _renderStatsTab() {
     const container = document.createElement('div');
-    container.style.cssText = 'display:flex;gap:16px;min-height:300px';
+    container.style.cssText = 'display:flex;gap:16px;min-height:300px;flex-wrap:wrap';
 
     const statsConfig = this._config.tabs_config?.stats || {};
     const stats = Array.isArray(statsConfig) ? statsConfig : statsConfig.items || [];
@@ -1491,7 +1491,7 @@ class PetfeederCard extends HTMLElement {
 
     // Left side: Stats
     const leftDiv = document.createElement('div');
-    leftDiv.style.cssText = 'flex:1;display:flex;flex-direction:column';
+    leftDiv.style.cssText = 'flex:1;min-width:140px;display:flex;flex-direction:column';
 
     const leftHeaderEl = document.createElement('div');
     leftHeaderEl.style.cssText = 'font-size:13px;font-weight:600;color:var(--primary-text-color,#333);margin-bottom:12px;text-transform:uppercase;letter-spacing:0.5px';
@@ -1540,7 +1540,7 @@ class PetfeederCard extends HTMLElement {
 
     // Right side: Feed History (Logs)
     const rightDiv = document.createElement('div');
-    rightDiv.style.cssText = 'flex:1;display:flex;flex-direction:column';
+    rightDiv.style.cssText = 'flex:1;min-width:140px;display:flex;flex-direction:column';
 
     const rightHeaderEl = document.createElement('div');
     rightHeaderEl.style.cssText = 'font-size:13px;font-weight:600;color:var(--primary-text-color,#333);margin-bottom:12px;text-transform:uppercase;letter-spacing:0.5px';
@@ -1549,7 +1549,7 @@ class PetfeederCard extends HTMLElement {
 
     const rightContent = document.createElement('div');
     rightContent.className = 'log-history-panel';
-    rightContent.style.cssText = 'flex:1;overflow-y:auto;max-height:200px;border:1px solid var(--divider-color,#e0e0e0);border-radius:6px;padding:8px';
+    rightContent.style.cssText = 'flex:1;overflow-y:auto;max-height:200px;border:1px solid var(--divider-color,#e0e0e0);border-radius:6px;padding:8px;margin-right:8px';
 
     if (historyEntities && historyEntities.filter(e => e).length > 0 && this._hass) {
       // --- History API mode ---
