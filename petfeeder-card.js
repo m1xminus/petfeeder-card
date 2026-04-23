@@ -16,12 +16,12 @@ class PetfeederCard extends HTMLElement {
       this.render();
     }
 
-    // Auto-refresh history logs every 5 minutes for always-on displays
+    // Auto-refresh history logs every 30 seconds as a safety net
     if (!this._historyPollInterval) {
       this._historyPollInterval = setInterval(() => {
         this._historyLogsFetched = 0; // invalidate cache
         if (this.isConnected && this._hass) this.render();
-      }, 5 * 60 * 1000);
+      }, 30 * 1000);
     }
 
     // Bubble Card popup workaround: the popup uses contain:layout paint
@@ -98,7 +98,8 @@ class PetfeederCard extends HTMLElement {
           logs_entity: null,
           left_header: 'Stats',
           right_header: 'Feed History',
-          items: []
+          items: [],
+          button_feed_entities: []
         },
         settings: []
       }
@@ -310,7 +311,8 @@ class PetfeederCard extends HTMLElement {
           logs_entity: '',
           left_header: 'Stats',
           right_header: 'Feed History',
-          items: []
+          items: [],
+          button_feed_entities: []
         },
         settings: []
       }
@@ -318,6 +320,7 @@ class PetfeederCard extends HTMLElement {
   }
 
   set hass(hass) {
+    const prevHass = this._hass;
     this._hass = hass;
     if (this._popupOpen) return;
 
@@ -325,6 +328,38 @@ class PetfeederCard extends HTMLElement {
     if (!this._domBuilt) {
       this.render();
       return;
+    }
+
+    // Check if any history-relevant entity has changed state → force immediate history refresh
+    if (prevHass) {
+      const statsConfig = this._config.tabs_config?.stats || {};
+      const watchEntities = [
+        ...(Array.isArray(statsConfig.logs_history_entities) ? statsConfig.logs_history_entities : []),
+        ...((statsConfig.button_feed_entities || []).map(b => b && b.entity).filter(Boolean)),
+        this._config.today_doses_entity,
+        this._config.today_grams_entity,
+        this._config.last_feed_entity,
+        this._config.food_delivery_error_entity,
+      ].filter(Boolean);
+
+      const changed = watchEntities.some(entityId => {
+        const prev = prevHass.states[entityId];
+        const curr = hass.states[entityId];
+        if (!prev || !curr) return Boolean(curr);
+        return prev.last_changed !== curr.last_changed || prev.state !== curr.state;
+      });
+
+      if (changed) {
+        this._historyLogsFetched = 0; // invalidate history cache
+        this._historyLogs = null;
+        if (this._renderTimer) {
+          clearTimeout(this._renderTimer);
+          this._renderTimer = null;
+        }
+        this._domBuilt = false;
+        this.render();
+        return;
+      }
     }
 
     // DOM already built - only update dynamic values in-place
@@ -1443,6 +1478,10 @@ class PetfeederCard extends HTMLElement {
 
   // --- Log entry renderer (shared by history and CSV modes) ---
 
+  _formatTimestamp(ts) {
+    return `${ts.getFullYear()}-${String(ts.getMonth()+1).padStart(2,'0')}-${String(ts.getDate()).padStart(2,'0')} ${String(ts.getHours()).padStart(2,'0')}:${String(ts.getMinutes()).padStart(2,'0')}:${String(ts.getSeconds()).padStart(2,'0')}`;
+  }
+
   _renderLogEntries(container, entries) {
     entries.forEach((entry, idx) => {
       const logItem = document.createElement('div');
@@ -1459,11 +1498,16 @@ class PetfeederCard extends HTMLElement {
       detail.style.cssText = 'color:var(--secondary-text-color,#888);font-size:10px;flex:1;min-width:0;text-align:center;word-break:break-word';
       detail.textContent = entry.info;
       const statusEl = document.createElement('span');
-      statusEl.style.cssText = 'font-size:10px;font-weight:500;color:#4caf50;flex-shrink:0';
-      if (entry.status.toLowerCase().includes('error') || entry.status.toLowerCase().includes('fail')) {
+      statusEl.style.cssText = 'font-size:10px;font-weight:500;flex-shrink:0';
+      const statusText = entry.status || '';
+      if (entry.type === 'button') {
+        statusEl.style.color = '#2196f3';
+      } else if (statusText.toLowerCase().includes('error') || statusText.toLowerCase().includes('fail')) {
         statusEl.style.color = '#f44336';
+      } else {
+        statusEl.style.color = '#4caf50';
       }
-      statusEl.textContent = entry.status;
+      statusEl.textContent = statusText;
       infoRow.appendChild(sched);
       infoRow.appendChild(detail);
       infoRow.appendChild(statusEl);
@@ -1484,6 +1528,8 @@ class PetfeederCard extends HTMLElement {
     const logsEntity = typeof statsConfig === 'object' ? statsConfig.logs_entity : null;
     const historyEntities = typeof statsConfig === 'object' && Array.isArray(statsConfig.logs_history_entities)
       ? statsConfig.logs_history_entities : null;
+    const buttonFeedEntities = typeof statsConfig === 'object' && Array.isArray(statsConfig.button_feed_entities)
+      ? statsConfig.button_feed_entities.filter(b => b && b.entity) : [];
     const historyDays = typeof statsConfig === 'object' && statsConfig.logs_history_days
       ? Number(statsConfig.logs_history_days) : 7;
     const leftHeader = typeof statsConfig === 'object' ? statsConfig.left_header || 'Stats' : 'Stats';
@@ -1551,7 +1597,7 @@ class PetfeederCard extends HTMLElement {
     rightContent.className = 'log-history-panel';
     rightContent.style.cssText = 'flex:1;overflow-y:auto;max-height:200px;border:1px solid var(--divider-color,#e0e0e0);border-radius:6px;padding:8px;margin-right:8px';
 
-    if (historyEntities && historyEntities.filter(e => e).length > 0 && this._hass) {
+    if ((historyEntities && historyEntities.filter(e => e).length > 0 || buttonFeedEntities.length > 0) && this._hass) {
       // --- History API mode ---
       const cached = this._historyLogs;
       const lastFetch = this._historyLogsFetched || 0;
@@ -1577,42 +1623,158 @@ class PetfeederCard extends HTMLElement {
         rightContent.appendChild(loading);
       }
 
-      // Fetch fresh data if cache is stale (>60s) or empty
-      if (now - lastFetch > 60000) {
+      // Fetch fresh data if cache is stale (>10s) or empty
+      if (now - lastFetch > 10000) {
         this._historyLogsFetched = now;
         const startTime = new Date(now - historyDays * 86400000).toISOString();
-        const validEntities = historyEntities.filter(e => e);
+        const validDeliveryEntities = historyEntities ? historyEntities.filter(e => e) : [];
+        const validButtonEntities = buttonFeedEntities.map(b => b.entity);
 
-        // Use WebSocket connection — correct method for HA Lovelace cards
-        this._hass.connection.sendMessagePromise({
-          type: 'history/history_during_period',
-          start_time: startTime,
-          entity_ids: validEntities,
-          significant_changes_only: false,
-          no_attributes: true,
-        }).then(result => {
-          // result is { 'entity.id': [{state, last_changed, last_updated}, ...], ... }
-          const entries = [];
-          Object.entries(result || {}).forEach(([entityId, stateList]) => {
-            if (!Array.isArray(stateList)) return;
-            stateList.forEach(item => {
-              // HA compressed format: s=state, lu=last_updated (Unix float), lc=last_changed
-              const state = item.s ?? item.state;
-              if (!state || state === 'unknown' || state === 'unavailable') return;
-              if (!/delivered/i.test(state) || /not.delivered/i.test(state)) return;
-              const match = entityId.match(/schedule_(\d+)/);
-              const schedNum = match ? match[1] : '?';
-              const schedName = `Schedule ${schedNum}`;
-              const infoEntityId = entityId.replace(/_delivery_status$/, '_info');
-              const infoState = this._hass.states[infoEntityId];
-              const info = infoState ? infoState.state : '';
-              // lu/lc are Unix timestamps (seconds float) in compressed format, or ISO strings in legacy
-              const rawTs = item.lc ?? item.lu ?? item.last_changed ?? item.last_updated;
-              const ts = typeof rawTs === 'number' ? new Date(rawTs * 1000) : new Date(rawTs);
-              const timestamp = `${ts.getFullYear()}-${String(ts.getMonth()+1).padStart(2,'0')}-${String(ts.getDate()).padStart(2,'0')} ${String(ts.getHours()).padStart(2,'0')}:${String(ts.getMinutes()).padStart(2,'0')}:${String(ts.getSeconds()).padStart(2,'0')}`;
-              entries.push({ timestamp, schedule: schedName, info, status: state, _ts: ts.getTime() });
-            });
+        // Build promise list
+        const promises = [];
+
+        if (validDeliveryEntities.length > 0) {
+          promises.push(
+            this._hass.connection.sendMessagePromise({
+              type: 'history/history_during_period',
+              start_time: startTime,
+              entity_ids: validDeliveryEntities,
+              significant_changes_only: false,
+              no_attributes: true,
+            }).then(result => ({ type: 'delivery', result }))
+              .catch(() => ({ type: 'delivery', result: {} }))
+          );
+        }
+
+        if (validButtonEntities.length > 0) {
+          promises.push(
+            this._hass.connection.sendMessagePromise({
+              type: 'history/history_during_period',
+              start_time: startTime,
+              entity_ids: validButtonEntities,
+              significant_changes_only: false,
+              no_attributes: true,
+            }).then(result => ({ type: 'button_history', result }))
+              .catch(() => ({ type: 'button_history', result: {} }))
+          );
+
+          // Logbook for user context of button presses
+          promises.push(
+            this._hass.connection.sendMessagePromise({
+              type: 'logbook/get_events',
+              start_time: startTime,
+              entity_ids: validButtonEntities,
+            }).then(result => ({ type: 'logbook', result }))
+              .catch(() => ({ type: 'logbook', result: [] }))
+          );
+        }
+
+        // Build user map from person entities — no admin access needed.
+        // Every person.* entity exposes attributes.user_id → visible to all users.
+        if (!this._userMap) {
+          this._userMap = {};
+        }
+        if (this._hass.user) this._userMap[this._hass.user.id] = this._hass.user.name;
+        Object.entries(this._hass.states).forEach(([entityId, state]) => {
+          if (!entityId.startsWith('person.')) return;
+          const userId = state.attributes?.user_id;
+          const name = state.attributes?.friendly_name || state.attributes?.source;
+          if (userId && name) this._userMap[userId] = name;
+        });
+        // Also try auth/list_users for admins — covers users without a person entity
+        promises.push(
+          this._hass.connection.sendMessagePromise({ type: 'auth/list_users' })
+            .then(users => ({ type: 'users', result: users }))
+            .catch(() => ({ type: 'users', result: [] }))
+        );
+
+        Promise.all(promises).then(results => {
+          // Populate user map
+          const userMap = this._userMap || {};
+          if (this._hass.user) userMap[this._hass.user.id] = this._hass.user.name;
+          // Person entities (no admin needed)
+          Object.entries(this._hass.states).forEach(([entityId, state]) => {
+            if (!entityId.startsWith('person.')) return;
+            const userId = state.attributes?.user_id;
+            const name = state.attributes?.friendly_name || state.attributes?.source;
+            if (userId && name) userMap[userId] = name;
           });
+          // auth/list_users (admin only, catches users without a person entity)
+          const usersResult = results.find(r => r.type === 'users');
+          if (usersResult) {
+            (usersResult.result || []).forEach(u => { if (u.id && u.name) userMap[u.id] = u.name; });
+          }
+          this._userMap = userMap;
+
+          // Build logbook timestamp → username map (rounded to nearest second for matching)
+          const logbookMap = new Map();
+          const logbookResult = results.find(r => r.type === 'logbook');
+          if (logbookResult) {
+            (logbookResult.result || []).forEach(entry => {
+              if (!entry.context_user_id) return;
+              const userName = userMap[entry.context_user_id] || null;
+              if (!userName) return;
+              const when = entry.when ? new Date(entry.when).getTime() : 0;
+              logbookMap.set(`${entry.entity_id}|${Math.round(when / 1000)}`, userName);
+            });
+          }
+
+          const entries = [];
+
+          // Process scheduled delivery entries
+          const deliveryResult = results.find(r => r.type === 'delivery');
+          if (deliveryResult) {
+            Object.entries(deliveryResult.result || {}).forEach(([entityId, stateList]) => {
+              if (!Array.isArray(stateList)) return;
+              stateList.forEach(item => {
+                const state = item.s ?? item.state;
+                if (!state || state === 'unknown' || state === 'unavailable') return;
+                if (!/delivered/i.test(state) || /not.delivered/i.test(state)) return;
+                const match = entityId.match(/schedule_(\d+)/);
+                const schedNum = match ? match[1] : '?';
+                const schedName = `Schedule ${schedNum}`;
+                const infoEntityId = entityId.replace(/_delivery_status$/, '_info');
+                const infoState = this._hass.states[infoEntityId];
+                const info = infoState ? infoState.state : '';
+                const rawTs = item.lc ?? item.lu ?? item.last_changed ?? item.last_updated;
+                const ts = typeof rawTs === 'number' ? new Date(rawTs * 1000) : new Date(rawTs);
+                entries.push({ timestamp: this._formatTimestamp(ts), schedule: schedName, info, status: state, type: 'schedule', _ts: ts.getTime() });
+              });
+            });
+          }
+
+          // Process manual button press entries
+          const buttonHistResult = results.find(r => r.type === 'button_history');
+          if (buttonHistResult) {
+            Object.entries(buttonHistResult.result || {}).forEach(([entityId, stateList]) => {
+              if (!Array.isArray(stateList)) return;
+              const buttonDef = buttonFeedEntities.find(b => b.entity === entityId);
+              stateList.forEach(item => {
+                const state = item.s ?? item.state;
+                if (!state || state === 'unknown' || state === 'unavailable' || state === 'none' || state === 'None') return;
+                const rawTs = item.lc ?? item.lu ?? item.last_changed ?? item.last_updated;
+                const ts = typeof rawTs === 'number' ? new Date(rawTs * 1000) : new Date(rawTs);
+                const roundedSec = Math.round(ts.getTime() / 1000);
+                const user = logbookMap.get(`${entityId}|${roundedSec}`) || '';
+                const label = buttonDef ? (buttonDef.label || entityId) : entityId;
+                const isCustom = buttonDef ? Boolean(buttonDef.custom) : false;
+                let info = '';
+                if (isCustom) {
+                  info = user ? `Custom Feed by ${user}` : 'Custom Feed';
+                } else {
+                  const doses = buttonDef ? buttonDef.doses : '';
+                  const grams = buttonDef ? buttonDef.grams : '';
+                  const parts = [];
+                  if (doses) parts.push(`${doses} dose${doses > 1 ? 's' : ''}`);
+                  if (grams) parts.push(`${grams}g`);
+                  info = parts.join(' · ');
+                  if (user) info += ` by ${user}`;
+                }
+                entries.push({ timestamp: this._formatTimestamp(ts), schedule: label, info, status: 'Manual', type: 'button', _ts: ts.getTime() });
+              });
+            });
+          }
+
           entries.sort((a, b) => b._ts - a._ts);
           this._historyLogs = entries;
           this._historyLogsFetchError = null;
@@ -3235,6 +3397,96 @@ class PetfeederCardEditor extends HTMLElement {
         this._config.tabs_config.stats.logs_history_days = isNaN(n) ? 7 : n;
         this._dispatch();
       }));
+
+      // --- Button Feed Entities section ---
+      if (!Array.isArray(statsConfig.button_feed_entities)) {
+        statsConfig.button_feed_entities = [];
+      }
+
+      const btnFeedLabel = document.createElement('div');
+      btnFeedLabel.style.cssText = 'font-size:13px;font-weight:600;margin:14px 0 4px';
+      btnFeedLabel.textContent = 'Feed History — Manual Button Presses';
+      content.appendChild(btnFeedLabel);
+
+      const btnFeedDesc = document.createElement('div');
+      btnFeedDesc.style.cssText = 'font-size:11px;color:var(--secondary-text-color,#888);margin-bottom:8px';
+      btnFeedDesc.textContent = 'Track button entities (e.g. quick-feed buttons). Set doses/grams or enable Custom for unknown amounts. Who pressed it is resolved from HA logbook.';
+      content.appendChild(btnFeedDesc);
+
+      const btnEntities = statsConfig.button_feed_entities;
+      btnEntities.forEach((btnDef, idx) => {
+        const btnCard = document.createElement('div');
+        btnCard.className = 'pf-status-card';
+        btnCard.style.cssText = 'background:var(--secondary-background-color,#f5f5f5);border-radius:8px;padding:8px;margin-bottom:8px';
+
+        btnCard.appendChild(this._buildHaEntityPicker(`Button ${idx + 1} Entity`, btnDef.entity || '', v => {
+          if (!Array.isArray(this._config.tabs_config.stats.button_feed_entities)) this._config.tabs_config.stats.button_feed_entities = [];
+          this._config.tabs_config.stats.button_feed_entities[idx].entity = v || '';
+          this._dispatch();
+        }));
+
+        btnCard.appendChild(this._buildTextField('Label', btnDef.label || '', 'e.g. 1 Dose (3g)', v => {
+          this._config.tabs_config.stats.button_feed_entities[idx].label = v || '';
+          this._dispatch();
+        }));
+
+        // Custom toggle
+        const customRow = document.createElement('div');
+        customRow.style.cssText = 'display:flex;align-items:center;justify-content:space-between;margin:6px 0 4px';
+        const customLab = document.createElement('span');
+        customLab.style.cssText = 'font-size:12px;color:var(--primary-text-color,#333)';
+        customLab.textContent = 'Custom feed (unknown grams)';
+        const customToggle = document.createElement('div');
+        customToggle.className = 'toggle' + (btnDef.custom ? ' on' : '');
+        customToggle.innerHTML = '<div class="toggle-thumb"></div>';
+        customToggle.addEventListener('click', () => {
+          this._config.tabs_config.stats.button_feed_entities[idx].custom = !btnDef.custom;
+          this._dispatch();
+          this._render();
+        });
+        customRow.appendChild(customLab);
+        customRow.appendChild(customToggle);
+        btnCard.appendChild(customRow);
+
+        if (!btnDef.custom) {
+          btnCard.appendChild(this._buildTextField('Doses', String(btnDef.doses ?? ''), 'Number of doses', v => {
+            const n = parseInt(v);
+            this._config.tabs_config.stats.button_feed_entities[idx].doses = isNaN(n) ? 0 : n;
+            this._dispatch();
+          }));
+
+          btnCard.appendChild(this._buildTextField('Grams', String(btnDef.grams ?? ''), 'Total grams', v => {
+            const n = parseFloat(v);
+            this._config.tabs_config.stats.button_feed_entities[idx].grams = isNaN(n) ? 0 : n;
+            this._dispatch();
+          }));
+        }
+
+        const removeBtnFeed = document.createElement('button');
+        removeBtnFeed.className = 'pf-btn pf-btn-danger pf-btn-sm';
+        removeBtnFeed.textContent = 'Remove';
+        removeBtnFeed.style.marginTop = '6px';
+        removeBtnFeed.addEventListener('click', () => {
+          this._config.tabs_config.stats.button_feed_entities.splice(idx, 1);
+          this._dispatch();
+          this._render();
+        });
+        btnCard.appendChild(removeBtnFeed);
+
+        content.appendChild(btnCard);
+      });
+
+      const addBtnFeedBtn = document.createElement('button');
+      addBtnFeedBtn.className = 'pf-btn pf-btn-primary pf-btn-sm';
+      addBtnFeedBtn.textContent = '+ Add Button Entity';
+      addBtnFeedBtn.style.marginBottom = '14px';
+      addBtnFeedBtn.addEventListener('click', () => {
+        if (!Array.isArray(this._config.tabs_config.stats.button_feed_entities)) this._config.tabs_config.stats.button_feed_entities = [];
+        this._config.tabs_config.stats.button_feed_entities.push({ entity: '', label: '', doses: 0, grams: 0, custom: false });
+        this._dispatch();
+        this._render();
+      });
+      content.appendChild(addBtnFeedBtn);
 
       // Legacy CSV logs entity (fallback)
       const legacyLabel = document.createElement('div');
