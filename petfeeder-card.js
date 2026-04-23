@@ -1706,18 +1706,32 @@ class PetfeederCard extends HTMLElement {
           }
           this._userMap = userMap;
 
-          // Build logbook timestamp → username map (rounded to nearest second for matching)
-          const logbookMap = new Map();
+          // Build logbook entry list for ±3s window matching
+          // (exact-second key matching is unreliable due to sub-second timing differences
+          // between the history recorder and the logbook)
+          const logbookEntries = [];
           const logbookResult = results.find(r => r.type === 'logbook');
           if (logbookResult) {
             (logbookResult.result || []).forEach(entry => {
               if (!entry.context_user_id) return;
               const userName = userMap[entry.context_user_id] || null;
               if (!userName) return;
-              const when = entry.when ? new Date(entry.when).getTime() : 0;
-              logbookMap.set(`${entry.entity_id}|${Math.round(when / 1000)}`, userName);
+              const tsMs = entry.when ? new Date(entry.when).getTime() : 0;
+              if (!tsMs) return;
+              logbookEntries.push({ entityId: entry.entity_id, tsMs, userName });
             });
           }
+          // Find closest logbook entry within ±3 seconds for a given entity + timestamp
+          const findLogbookUser = (entityId, tsMs) => {
+            let best = null;
+            let bestDiff = Infinity;
+            for (const e of logbookEntries) {
+              if (e.entityId !== entityId) continue;
+              const diff = Math.abs(e.tsMs - tsMs);
+              if (diff <= 3000 && diff < bestDiff) { best = e; bestDiff = diff; }
+            }
+            return best ? best.userName : '';
+          };
 
           const entries = [];
 
@@ -1754,8 +1768,7 @@ class PetfeederCard extends HTMLElement {
                 if (!state || state === 'unknown' || state === 'unavailable' || state === 'none' || state === 'None') return;
                 const rawTs = item.lc ?? item.lu ?? item.last_changed ?? item.last_updated;
                 const ts = typeof rawTs === 'number' ? new Date(rawTs * 1000) : new Date(rawTs);
-                const roundedSec = Math.round(ts.getTime() / 1000);
-                const user = logbookMap.get(`${entityId}|${roundedSec}`) || '';
+                const user = findLogbookUser(entityId, ts.getTime());
                 const label = buttonDef ? (buttonDef.label || entityId) : entityId;
                 const isCustom = buttonDef ? Boolean(buttonDef.custom) : false;
                 let info = '';
