@@ -1780,11 +1780,13 @@ class PetfeederCard extends HTMLElement {
                 const rawTs = item.lc ?? item.lu ?? item.last_changed ?? item.last_updated;
                 const ts = typeof rawTs === 'number' ? new Date(rawTs * 1000) : new Date(rawTs);
                 const user = findLogbookUser(entityId, ts.getTime());
+                // Only show entries that were triggered by a real user button press
+                if (!user) return;
                 const label = buttonDef ? (buttonDef.label || entityId) : entityId;
                 const isCustom = buttonDef ? Boolean(buttonDef.custom) : false;
                 let info = '';
                 if (isCustom) {
-                  info = user ? `Custom Feed by ${user}` : 'Custom Feed';
+                  info = `Custom Feed by ${user}`;
                 } else {
                   const doses = buttonDef ? buttonDef.doses : '';
                   const grams = buttonDef ? buttonDef.grams : '';
@@ -1792,7 +1794,7 @@ class PetfeederCard extends HTMLElement {
                   if (doses) parts.push(`${doses} dose${doses > 1 ? 's' : ''}`);
                   if (grams) parts.push(`${grams}g`);
                   info = parts.join(' · ');
-                  if (user) info += ` by ${user}`;
+                  info += ` by ${user}`;
                 }
                 entries.push({ timestamp: this._formatTimestamp(ts), schedule: label, info, status: 'Manual', type: 'button', _ts: ts.getTime() });
               });
